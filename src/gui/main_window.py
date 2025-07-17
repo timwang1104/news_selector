@@ -25,8 +25,8 @@ class MainWindow:
         
         # 服务实例
         self.auth = InoreaderAuth()
-        self.news_service = NewsService()
-        self.subscription_service = SubscriptionService()
+        self.news_service = NewsService(self.auth)
+        self.subscription_service = SubscriptionService(self.auth)
         
         # 数据
         self.current_articles: List[NewsArticle] = []

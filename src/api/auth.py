@@ -4,6 +4,7 @@ Inoreader OAuth2认证处理
 import json
 import os
 import webbrowser
+import secrets
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from dataclasses import dataclass
@@ -98,6 +99,7 @@ class InoreaderAuth:
     def __init__(self):
         self.config = settings.inoreader
         self.token: Optional[UserToken] = None
+        self.current_state: Optional[str] = None  # 存储当前的state参数
         self._load_token()
 
     def _find_free_port(self) -> int:
@@ -143,13 +145,19 @@ class InoreaderAuth:
             except Exception as e:
                 print(f"保存token失败: {e}")
     
-    def get_auth_url(self, redirect_uri: str) -> str:
+    def get_auth_url(self, redirect_uri: str, state: Optional[str] = None) -> str:
         """获取OAuth2认证URL"""
+        if state is None:
+            state = secrets.token_urlsafe(32)  # 生成随机state参数
+
+        self.current_state = state  # 保存state用于验证
+
         params = {
             'client_id': self.config.app_id,
             'redirect_uri': redirect_uri,
             'response_type': 'code',
-            'scope': 'read'
+            'scope': 'read',
+            'state': state
         }
         return f"{self.config.oauth_url}auth?{urlencode(params)}"
     
@@ -166,9 +174,26 @@ class InoreaderAuth:
         }
         
         try:
+            print(f"正在向 {token_url} 发送token请求...")
+            print(f"使用重定向URI: {redirect_uri}")
+
             response = requests.post(token_url, data=data, timeout=settings.app.request_timeout)
-            response.raise_for_status()
-            
+
+            if response.status_code != 200:
+                print(f"❌ HTTP错误 {response.status_code}: {response.text}")
+                if response.status_code == 400:
+                    try:
+                        error_data = response.json()
+                        if error_data.get('error') == 'redirect_uri_mismatch':
+                            print("🔧 重定向URI不匹配！")
+                            print("请确保在Inoreader开发者门户中设置了正确的重定向URI:")
+                            print(f"   {redirect_uri}")
+                        else:
+                            print(f"错误详情: {error_data}")
+                    except:
+                        pass
+                return False
+
             token_data = response.json()
             self.token = UserToken(
                 access_token=token_data['access_token'],
@@ -176,12 +201,16 @@ class InoreaderAuth:
                 token_type=token_data.get('token_type', 'Bearer'),
                 expires_in=token_data.get('expires_in')
             )
-            
+
             self._save_token()
+            print("✅ Token获取成功")
             return True
-            
+
         except requests.RequestException as e:
-            print(f"获取token失败: {e}")
+            print(f"❌ 网络请求失败: {e}")
+            return False
+        except Exception as e:
+            print(f"❌ 未知错误: {e}")
             return False
     
     def refresh_access_token(self) -> bool:
@@ -250,7 +279,15 @@ class InoreaderAuth:
         print(f"本地服务器地址: {redirect_uri}")
 
         # 启动本地服务器
-        server = self._start_callback_server(port)
+        try:
+            server = self._start_callback_server(port)
+        except OSError as e:
+            print(f"❌ 无法启动本地服务器在端口 {port}: {e}")
+            print("可能的原因:")
+            print("1. 端口被其他程序占用")
+            print("2. 防火墙阻止了端口访问")
+            print("3. 权限不足")
+            return False
 
         # 生成认证URL
         auth_url = self.get_auth_url(redirect_uri)
@@ -283,6 +320,15 @@ class InoreaderAuth:
         server.shutdown()
 
         if server.auth_code:
+            # 验证state参数
+            if hasattr(server, 'auth_state') and server.auth_state:
+                if server.auth_state != self.current_state:
+                    print("❌ State参数验证失败，可能存在CSRF攻击")
+                    return False
+                print("✅ State参数验证通过")
+            else:
+                print("⚠️  未收到state参数")
+
             print("✅ 收到授权码，正在交换访问令牌...")
             return self.exchange_code_for_token(server.auth_code, redirect_uri)
         else:

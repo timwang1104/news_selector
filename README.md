@@ -188,23 +188,45 @@ mypy src/
 
 ### 登录问题
 
-如果遇到连接问题：
+### 登录问题排查
 
-1. **自动认证流程**：
-   - 应用会自动启动本地服务器监听认证回调
-   - 浏览器会打开Inoreader授权页面
-   - 完成登录和授权后会自动返回应用
-   - 无需手动复制任何内容
+#### 1. 重定向URI配置
+**最重要**: 确保在Inoreader开发者门户中正确配置重定向URI：
+- 访问: https://www.inoreader.com/developers/
+- 在应用设置中添加重定向URI: `http://localhost:8080`
 
-2. **可能的问题**：
-   - 防火墙阻止了本地服务器
-   - 端口被其他程序占用
-   - 网络连接问题
+#### 2. 端口检查
+```bash
+# 检查端口8080是否可用
+python check_port.py
+```
 
-3. **测试认证**：
-   ```bash
-   python test_auth.py
-   ```
+#### 3. 完整诊断
+```bash
+# 运行完整的登录诊断
+python debug_login.py
+```
+
+#### 4. 测试登录
+```bash
+# 测试认证流程
+python test_auth.py
+
+# 测试认证实例共享
+python test_auth_sharing.py
+
+# 测试GUI认证功能
+python test_gui_auth.py
+
+# 测试文章解析功能
+python test_article_parsing.py
+```
+
+#### 5. 常见问题
+- **端口被占用**: 关闭占用8080端口的程序
+- **防火墙阻止**: 允许Python程序监听端口
+- **重定向URI不匹配**: 检查Inoreader中的配置
+- **网络问题**: 确保能访问inoreader.com
 
 ### 其他常见问题
 

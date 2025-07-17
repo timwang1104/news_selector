@@ -109,8 +109,21 @@ class LoginDialog:
                 if success:
                     self.dialog.after(0, self.login_success)
                 else:
-                    self.dialog.after(0, lambda: self.show_error("登录失败，请重试"))
+                    error_msg = "登录失败，可能的原因：\n"
+                    error_msg += "1. 重定向URI配置不正确\n"
+                    error_msg += "2. 端口8080被占用\n"
+                    error_msg += "3. 网络连接问题\n\n"
+                    error_msg += "请运行 debug_login.py 进行诊断"
+                    self.dialog.after(0, lambda: self.show_error(error_msg))
 
+            except OSError as e:
+                if "Address already in use" in str(e):
+                    error_msg = "端口8080被占用！\n\n"
+                    error_msg += "请关闭占用端口8080的程序，\n"
+                    error_msg += "或在Inoreader中配置其他端口。"
+                    self.dialog.after(0, lambda: self.show_error(error_msg))
+                else:
+                    self.dialog.after(0, lambda: self.show_error(f"网络错误: {e}"))
             except Exception as e:
                 self.dialog.after(0, lambda: self.show_error(f"登录过程中出错: {e}"))
 

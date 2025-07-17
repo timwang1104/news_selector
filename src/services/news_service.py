@@ -11,9 +11,9 @@ from ..models.subscription import StreamInfo
 
 class NewsService:
     """新闻服务"""
-    
-    def __init__(self):
-        self.client = InoreaderClient()
+
+    def __init__(self, auth=None):
+        self.client = InoreaderClient(auth)
     
     def get_latest_articles(self, 
                           count: Optional[int] = None,

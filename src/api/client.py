@@ -18,10 +18,10 @@ class InoreaderAPIError(Exception):
 
 class InoreaderClient:
     """Inoreader API客户端"""
-    
-    def __init__(self):
+
+    def __init__(self, auth: Optional[InoreaderAuth] = None):
         self.config = settings.inoreader
-        self.auth = InoreaderAuth()
+        self.auth = auth if auth is not None else InoreaderAuth()
         self.session = self._create_session()
     
     def _create_session(self) -> requests.Session:

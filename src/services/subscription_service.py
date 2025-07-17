@@ -9,9 +9,9 @@ from ..models.subscription import Subscription, UnreadCount
 
 class SubscriptionService:
     """订阅管理服务"""
-    
-    def __init__(self):
-        self.client = InoreaderClient()
+
+    def __init__(self, auth=None):
+        self.client = InoreaderClient(auth)
     
     def get_all_subscriptions(self) -> List[Subscription]:
         """获取所有订阅源"""
@@ -131,7 +131,16 @@ class SubscriptionService:
         unread_counts = self.get_unread_counts()
         
         total_subscriptions = len(subscriptions)
-        total_unread = sum(unread_counts.values())
+        # 确保所有值都是整数
+        total_unread = 0
+        for value in unread_counts.values():
+            if isinstance(value, str):
+                try:
+                    total_unread += int(value)
+                except ValueError:
+                    pass
+            else:
+                total_unread += value
         
         # 按分类统计
         category_stats = {}
@@ -143,7 +152,14 @@ class SubscriptionService:
                         'unread': 0
                     }
                 category_stats[category.label]['count'] += 1
-                category_stats[category.label]['unread'] += unread_counts.get(subscription.id, 0)
+                unread_value = unread_counts.get(subscription.id, 0)
+                # 确保是整数类型
+                if isinstance(unread_value, str):
+                    try:
+                        unread_value = int(unread_value)
+                    except ValueError:
+                        unread_value = 0
+                category_stats[category.label]['unread'] += unread_value
         
         # 找出最活跃的订阅源（未读数量最多的前10个）
         subscriptions_with_unread = [
