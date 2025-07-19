@@ -618,7 +618,7 @@ class MainWindow:
                         self.rss_manager.custom_rss_service.mark_article_read(article.id, feed.id)
                         # 更新本地显示
                         article.is_read = True
-                        self.update_article_list()
+                        self.update_article_list(self.current_articles)
                         return
 
     def view_article_detail(self):
@@ -868,16 +868,12 @@ class MainWindow:
 
     def batch_filter_articles(self):
         """批量筛选文章"""
-        if not self.auth.is_authenticated():
-            messagebox.showwarning("警告", "请先登录")
-            return
-
         try:
             # 导入批量筛选对话框
             from .batch_filter_dialog import BatchFilterDialog
 
             # 创建并显示批量筛选配置对话框
-            dialog = BatchFilterDialog(self.root, self.auth)
+            dialog = BatchFilterDialog(self.root)
             result = dialog.show()
 
             if result:
@@ -1003,10 +999,7 @@ class MainWindow:
 
     def quick_filter(self, filter_type: str):
         """快速筛选文章"""
-        if not self.auth.is_authenticated():
-            messagebox.showwarning("警告", "请先登录")
-            return
-
+        # 检查是否有文章
         if not self.current_articles:
             messagebox.showinfo("提示", "请先加载文章")
             return
@@ -1480,7 +1473,7 @@ AI筛选通过: {result.ai_filtered_count}
         self.display_mode = "all"
 
         # 更新文章列表显示
-        self.update_article_list()
+        self.update_article_list(converted_articles)
 
         # 更新状态栏
         self.update_status(f"显示 {source_name} 文章: {len(converted_articles)} 篇")

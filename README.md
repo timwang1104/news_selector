@@ -18,6 +18,7 @@
 - 🔄 自动刷新和手动刷新
 - 📱 本地存储，无需网络API
 - 🎯 文章过滤和搜索
+- ⭐ 预设34个优质科技产业RSS源
 
 ### 界面功能
 - 💻 友好的命令行界面
@@ -165,10 +166,14 @@ python gui.py
 #### 快速开始
 1. 启动GUI: `python gui.py`
 2. 在左侧"订阅源管理"区域，点击"自定义RSS"标签页
-3. 点击"添加RSS"按钮
-4. 输入RSS URL（如：`https://feeds.bbci.co.uk/news/rss.xml`）
-5. 设置分类（可选）
-6. 点击确定
+3. **方式一：使用预设RSS源**
+   - 点击"预设源"按钮
+   - 选择分类（科技新闻、人工智能、开发者等）
+   - 选择要添加的RSS源，点击"添加选中"
+4. **方式二：手动添加RSS源**
+   - 点击"添加RSS"按钮
+   - 输入RSS URL（如：`https://feeds.bbci.co.uk/news/rss.xml`）
+   - 设置分类（可选），点击确定
 
 #### 主要功能
 1. **添加订阅源**: 支持RSS/Atom格式，自动验证URL有效性
@@ -180,11 +185,25 @@ python gui.py
 #### 主要特性
 1. **统一的文章管理**: RSS文章和Inoreader文章共享同一个文章列表
 2. **智能文章处理**: 自动识别文章类型，提供相应的操作选项
-3. **简化的界面**: 减少重复元素，提供更清晰的功能分区
-4. **一致的用户体验**: 统一的过滤、搜索和操作方式
+3. **预设优质RSS源**: 34个精选科技产业RSS源，涵盖9大分类
+4. **批量添加功能**: 支持一键添加多个RSS源，智能去重
+5. **简化的界面**: 减少重复元素，提供更清晰的功能分区
+6. **一致的用户体验**: 统一的过滤、搜索和操作方式
+
+#### 预设RSS源分类
+- 🔬 **科技新闻**: TechCrunch, The Verge, Wired, Ars Technica, Engadget
+- 🇨🇳 **中文科技**: 36氪, 虎嗅网, 少数派, 爱范儿
+- 🤖 **人工智能**: OpenAI Blog, MIT Technology Review, 机器之心
+- 💰 **区块链**: CoinDesk, Cointelegraph, 链闻
+- 👨‍💻 **开发者**: GitHub Blog, Hacker News, Stack Overflow, 阮一峰
+- 💼 **商业**: Harvard Business Review, Forbes, 经济学人
+- 🎨 **设计**: Smashing Magazine, A List Apart
+- 🔬 **科学**: Nature News, Science News, IEEE Spectrum
+- 🎮 **游戏**: GameSpot, IGN, 机核网
 
 详细使用说明请参考：
 - [自定义RSS功能指南](docs/custom_rss_guide.md)
+- [预设RSS源使用指南](docs/preset_rss_feeds_guide.md)
 - [统一界面设计指南](docs/unified_interface_guide.md)
 
 ## 项目结构

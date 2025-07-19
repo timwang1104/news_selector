@@ -48,6 +48,9 @@ class RSSManager:
         toolbar.pack(fill=tk.X, pady=(0, 5))
         
         ttk.Button(toolbar, text="添加RSS", command=self.add_rss_subscription).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(toolbar, text="预设源", command=self.show_preset_feeds).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(toolbar, text="编辑", command=self.edit_rss_subscription).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(toolbar, text="启用/停用", command=self.toggle_feed_status).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="删除", command=self.remove_rss_subscription).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="刷新选中", command=self.refresh_selected_feed).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="全部刷新", command=self.refresh_all_feeds).pack(side=tk.LEFT)
@@ -246,6 +249,50 @@ class RSSManager:
                 status
             ))
 
+    def edit_rss_subscription(self):
+        """编辑RSS订阅"""
+        if not self.selected_feed:
+            messagebox.showwarning("提示", "请先选择要编辑的RSS订阅源")
+            return
+
+        dialog = RSSEditDialog(self.parent_frame, self.selected_feed)
+        if dialog.result:
+            # 更新RSS订阅
+            success, message = self.custom_rss_service.update_subscription(
+                self.selected_feed.id,
+                dialog.result['url'],
+                dialog.result['category']
+            )
+
+            if success:
+                messagebox.showinfo("成功", "RSS订阅更新成功")
+                self.refresh_rss_feed_list()
+            else:
+                messagebox.showerror("错误", f"更新RSS订阅失败: {message}")
+
+    def toggle_feed_status(self):
+        """切换RSS订阅源状态（启用/停用）"""
+        if not self.selected_feed:
+            messagebox.showwarning("提示", "请先选择要操作的RSS订阅源")
+            return
+
+        # 切换状态
+        new_status = not self.selected_feed.is_active
+        success = self.custom_rss_service.subscription_manager.set_feed_active(
+            self.selected_feed.id, new_status
+        )
+
+        if success:
+            status_text = "启用" if new_status else "停用"
+            messagebox.showinfo("成功", f"已{status_text}RSS订阅源: {self.selected_feed.title}")
+            self.refresh_rss_feed_list()
+        else:
+            messagebox.showerror("错误", "状态切换失败")
+
+    def show_preset_feeds(self):
+        """显示预设RSS源选择对话框"""
+        PresetFeedsDialog(self.parent_frame, self.custom_rss_service, self.refresh_rss_feed_list)
+
     def show_feed_context_menu(self, event):
         """显示订阅源右键菜单"""
         # TODO: 实现右键菜单
@@ -319,6 +366,302 @@ class RSSAddDialog:
             category = "默认"
 
         self.result = (url, category)
+        self.dialog.destroy()
+
+    def cancel(self):
+        """取消按钮"""
+        self.dialog.destroy()
+
+
+class RSSEditDialog:
+    """RSS订阅编辑对话框"""
+
+    def __init__(self, parent, feed):
+        self.result = None
+        self.feed = feed
+
+        # 创建对话框窗口
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("编辑RSS订阅")
+        self.dialog.geometry("500x300")
+        self.dialog.resizable(False, False)
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+
+        # 居中显示
+        self.dialog.geometry("+%d+%d" % (
+            parent.winfo_rootx() + 50,
+            parent.winfo_rooty() + 50
+        ))
+
+        self.create_widgets()
+
+        # 等待对话框关闭
+        self.dialog.wait_window()
+
+    def create_widgets(self):
+        """创建对话框组件"""
+        main_frame = ttk.Frame(self.dialog)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+        # 标题
+        ttk.Label(main_frame, text="编辑RSS订阅", font=("Arial", 14, "bold")).pack(pady=(0, 20))
+
+        # RSS URL
+        ttk.Label(main_frame, text="RSS URL:").pack(anchor=tk.W)
+        self.url_var = tk.StringVar(value=self.feed.url)
+        url_entry = ttk.Entry(main_frame, textvariable=self.url_var, width=60)
+        url_entry.pack(fill=tk.X, pady=(5, 15))
+
+        # 分类
+        ttk.Label(main_frame, text="分类:").pack(anchor=tk.W)
+        self.category_var = tk.StringVar(value=self.feed.category)
+        category_entry = ttk.Entry(main_frame, textvariable=self.category_var, width=60)
+        category_entry.pack(fill=tk.X, pady=(5, 15))
+
+        # 标题（只读）
+        ttk.Label(main_frame, text="标题:").pack(anchor=tk.W)
+        title_entry = ttk.Entry(main_frame, width=60, state="readonly")
+        title_entry.insert(0, self.feed.title)
+        title_entry.pack(fill=tk.X, pady=(5, 15))
+
+        # 描述（只读）
+        ttk.Label(main_frame, text="描述:").pack(anchor=tk.W)
+        desc_text = tk.Text(main_frame, height=4, width=60, state="disabled")
+        desc_text.config(state="normal")
+        desc_text.insert("1.0", self.feed.description or "无描述")
+        desc_text.config(state="disabled")
+        desc_text.pack(fill=tk.X, pady=(5, 20))
+
+        # 按钮
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X)
+
+        ttk.Button(button_frame, text="取消", command=self.cancel).pack(side=tk.RIGHT, padx=(10, 0))
+        ttk.Button(button_frame, text="保存", command=self.save).pack(side=tk.RIGHT)
+
+        # 绑定快捷键
+        self.dialog.bind("<Return>", lambda e: self.save())
+        self.dialog.bind("<Escape>", lambda e: self.cancel())
+
+        # 焦点设置到URL输入框
+        url_entry.focus()
+        url_entry.select_range(0, tk.END)
+
+    def save(self):
+        """保存按钮"""
+        url = self.url_var.get().strip()
+        category = self.category_var.get().strip()
+
+        if not url:
+            messagebox.showerror("错误", "请输入RSS URL", parent=self.dialog)
+            return
+
+        self.result = {
+            'url': url,
+            'category': category or "默认"
+        }
+        self.dialog.destroy()
+
+    def cancel(self):
+        """取消按钮"""
+        self.dialog.destroy()
+
+
+class PresetFeedsDialog:
+    """预设RSS源选择对话框"""
+
+    def __init__(self, parent, rss_service, refresh_callback):
+        self.rss_service = rss_service
+        self.refresh_callback = refresh_callback
+        self.selected_feeds = []
+
+        # 创建对话框窗口
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("添加预设RSS源")
+        self.dialog.geometry("800x600")
+        self.dialog.resizable(True, True)
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+
+        # 居中显示
+        self.dialog.geometry("+%d+%d" % (
+            parent.winfo_rootx() + 50,
+            parent.winfo_rooty() + 50
+        ))
+
+        self.create_widgets()
+
+        # 等待对话框关闭
+        self.dialog.wait_window()
+
+    def create_widgets(self):
+        """创建对话框组件"""
+        main_frame = ttk.Frame(self.dialog)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+        # 标题
+        ttk.Label(main_frame, text="选择要添加的RSS源", font=("Arial", 14, "bold")).pack(pady=(0, 15))
+
+        # 创建左右分割面板
+        paned_window = ttk.PanedWindow(main_frame, orient=tk.HORIZONTAL)
+        paned_window.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+
+        # 左侧：分类列表
+        left_frame = ttk.Frame(paned_window)
+        paned_window.add(left_frame, weight=1)
+
+        ttk.Label(left_frame, text="分类", font=("Arial", 12, "bold")).pack(pady=(0, 5))
+
+        # 分类列表
+        self.category_listbox = tk.Listbox(left_frame, width=20)
+        self.category_listbox.pack(fill=tk.BOTH, expand=True)
+
+        # 加载分类
+        from ..data.preset_rss_feeds import get_all_categories
+        categories = get_all_categories()
+        for category in categories:
+            self.category_listbox.insert(tk.END, category)
+
+        # 绑定分类选择事件
+        self.category_listbox.bind("<<ListboxSelect>>", self.on_category_select)
+
+        # 右侧：RSS源列表
+        right_frame = ttk.Frame(paned_window)
+        paned_window.add(right_frame, weight=2)
+
+        ttk.Label(right_frame, text="RSS源", font=("Arial", 12, "bold")).pack(pady=(0, 5))
+
+        # RSS源树形视图
+        columns = ("name", "description")
+        self.feeds_tree = ttk.Treeview(right_frame, columns=columns, show="tree headings")
+        self.feeds_tree.heading("#0", text="选择")
+        self.feeds_tree.heading("name", text="名称")
+        self.feeds_tree.heading("description", text="描述")
+
+        self.feeds_tree.column("#0", width=50)
+        self.feeds_tree.column("name", width=150)
+        self.feeds_tree.column("description", width=300)
+
+        # 滚动条
+        feeds_scrollbar = ttk.Scrollbar(right_frame, orient=tk.VERTICAL, command=self.feeds_tree.yview)
+        self.feeds_tree.configure(yscrollcommand=feeds_scrollbar.set)
+
+        self.feeds_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        feeds_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # 按钮框架
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X)
+
+        ttk.Button(button_frame, text="全选", command=self.select_all).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(button_frame, text="全不选", command=self.deselect_all).pack(side=tk.LEFT, padx=(0, 10))
+
+        ttk.Button(button_frame, text="取消", command=self.cancel).pack(side=tk.RIGHT, padx=(10, 0))
+        ttk.Button(button_frame, text="添加选中", command=self.add_selected).pack(side=tk.RIGHT)
+
+        # 默认选择第一个分类
+        if categories:
+            self.category_listbox.selection_set(0)
+            self.on_category_select(None)
+
+    def on_category_select(self, event):
+        """分类选择事件"""
+        selection = self.category_listbox.curselection()
+        if not selection:
+            return
+
+        category = self.category_listbox.get(selection[0])
+
+        # 清空RSS源列表
+        for item in self.feeds_tree.get_children():
+            self.feeds_tree.delete(item)
+
+        # 清空数据映射
+        if hasattr(self, 'feed_data_map'):
+            self.feed_data_map.clear()
+
+        # 加载该分类的RSS源
+        from ..data.preset_rss_feeds import get_feeds_by_category
+        feeds = get_feeds_by_category(category)
+
+        # 存储feed数据的字典
+        self.feed_data_map = {}
+
+        for feed in feeds:
+            # 检查是否已存在
+            existing_feed = self.rss_service.subscription_manager.get_feed_by_url(feed["url"])
+
+            item_id = self.feeds_tree.insert("", tk.END, values=(
+                feed["name"],
+                feed["description"]
+            ), tags=("existing" if existing_feed else "new",))
+
+            # 存储feed数据到字典中
+            self.feed_data_map[item_id] = feed
+
+        # 设置标签样式
+        self.feeds_tree.tag_configure("existing", foreground="gray")
+        self.feeds_tree.tag_configure("new", foreground="black")
+
+    def select_all(self):
+        """全选当前分类的RSS源"""
+        for item in self.feeds_tree.get_children():
+            tags = self.feeds_tree.item(item)["tags"]
+            if "new" in tags:  # 只选择未添加的
+                self.feeds_tree.selection_add(item)
+
+    def deselect_all(self):
+        """取消全选"""
+        self.feeds_tree.selection_remove(self.feeds_tree.selection())
+
+    def add_selected(self):
+        """添加选中的RSS源"""
+        selection = self.feeds_tree.selection()
+        if not selection:
+            messagebox.showwarning("提示", "请选择要添加的RSS源", parent=self.dialog)
+            return
+
+        added_count = 0
+        failed_feeds = []
+
+        for item_id in selection:
+            # 检查是否已存在
+            tags = self.feeds_tree.item(item_id)["tags"]
+            if "existing" in tags:
+                continue
+
+            # 获取feed数据
+            feed_data = self.feed_data_map.get(item_id)
+            if not feed_data:
+                continue
+
+            # 添加RSS源
+            success, message = self.rss_service.add_subscription(
+                feed_data["url"],
+                feed_data["category"]
+            )
+
+            if success:
+                added_count += 1
+            else:
+                failed_feeds.append(f"{feed_data['name']}: {message}")
+
+        # 显示结果
+        if added_count > 0:
+            messagebox.showinfo("成功", f"成功添加 {added_count} 个RSS源", parent=self.dialog)
+            # 刷新主界面
+            if self.refresh_callback:
+                self.refresh_callback()
+
+        if failed_feeds:
+            error_msg = "以下RSS源添加失败:\n" + "\n".join(failed_feeds)
+            messagebox.showerror("部分失败", error_msg, parent=self.dialog)
+
+        if added_count == 0 and not failed_feeds:
+            messagebox.showinfo("提示", "所选RSS源已存在", parent=self.dialog)
+
+        # 关闭对话框
         self.dialog.destroy()
 
     def cancel(self):

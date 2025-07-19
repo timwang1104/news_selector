@@ -114,6 +114,61 @@ class CustomRSSService:
         with self._lock:
             return self.subscription_manager.get_all_categories()
     
+    def update_subscription(self, feed_id: str, url: str, category: str = "默认") -> Tuple[bool, str]:
+        """
+        更新RSS订阅
+
+        Args:
+            feed_id: 订阅源ID
+            url: 新的RSS URL
+            category: 新的分类
+
+        Returns:
+            (是否成功, 消息)
+        """
+        try:
+            with self._lock:
+                # 获取现有订阅源
+                feed = self.subscription_manager.get_feed_by_id(feed_id)
+                if not feed:
+                    return False, "订阅源不存在"
+
+                # 如果URL发生变化，需要验证新URL
+                if feed.url != url:
+                    # 验证新URL
+                    is_valid, error_msg = self.rss_service.validate_rss_url(url)
+                    if not is_valid:
+                        return False, error_msg
+
+                    # 检查新URL是否与其他订阅源冲突
+                    existing_feed = self.subscription_manager.get_feed_by_url(url)
+                    if existing_feed and existing_feed.id != feed_id:
+                        return False, "该RSS URL已被其他订阅源使用"
+
+                    # 解析新的RSS feed获取最新信息
+                    new_feed_data = self.rss_service.parse_rss_feed(url)
+                    if not new_feed_data:
+                        return False, "无法解析RSS源"
+
+                    # 更新feed信息
+                    feed.url = url
+                    feed.title = new_feed_data.title
+                    feed.description = new_feed_data.description
+                    feed.link = new_feed_data.link
+
+                # 更新分类
+                feed.category = category
+                feed.updated_at = datetime.now(timezone.utc)
+
+                # 保存更改
+                self.subscription_manager.save()
+
+                return True, f"成功更新RSS订阅: {feed.title}"
+
+        except Exception as e:
+            logger.error(f"更新RSS订阅失败: {e}")
+            return False, f"更新失败: {e}"
+
     def update_feed_category(self, feed_id: str, category: str) -> bool:
         """更新订阅源分类"""
         try:

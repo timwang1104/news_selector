@@ -62,9 +62,6 @@ class InoreaderClient:
 
     def _make_request(self, method: str, endpoint: str, use_cache: Optional[bool] = None, **kwargs) -> Dict[str, Any]:
         """发起API请求"""
-        if not self.auth.is_authenticated():
-            raise InoreaderAPIError("用户未认证，请先登录")
-
         # 确定是否使用缓存
         should_use_cache = use_cache if use_cache is not None else self.use_cache
 
@@ -75,6 +72,10 @@ class InoreaderClient:
             if cached_result is not None:
                 logger.debug(f"使用缓存结果: {endpoint}")
                 return cached_result
+
+        # 如果没有缓存数据，检查认证状态
+        if not self.auth.is_authenticated():
+            raise InoreaderAPIError("用户未认证，请先登录")
 
         # 发起实际请求
         result = self._make_actual_request(method, endpoint, **kwargs)

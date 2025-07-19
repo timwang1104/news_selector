@@ -11,7 +11,7 @@ from ..services.batch_filter_service import BatchFilterConfig
 class BatchFilterDialog:
     """批量筛选配置对话框"""
     
-    def __init__(self, parent, auth):
+    def __init__(self, parent, auth=None):
         self.parent = parent
         self.auth = auth
         self.result = None
