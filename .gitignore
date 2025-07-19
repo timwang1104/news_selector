@@ -158,6 +158,13 @@ debug_*.py
 *_debug.py
 verify_*.py
 check_*.py
+demo_*.py
+simple_*.py
+minimal_*.py
+cleanup_*.py
+*_demo.py
+*_simple.py
+*_minimal.py
 
 # Log files
 *.log
@@ -189,4 +196,42 @@ yarn-error.log*
 build/
 dist/
 *.egg-info/
+
+# Output files
 *.csv
+*.json
+*_result.*
+*_output.*
+*_analysis.*
+*_report.*
+
+# Temporary analysis and documentation files
+region*_analysis.md
+*_analysis_*.md
+api_test_*.md
+verification_*.md
+
+# Additional IDE and editor files
+.project
+.pydevproject
+desktop.ini
+
+# Application specific
+user_tokens.json
+auth_tokens.json
+*.token
+.env.development
+.env.test
+
+# News Selector specific files
+batch_filter_demo_*.csv
+batch_filter_demo_*.json
+*_demo_*.csv
+*_demo_*.json
+filter_results_*.csv
+filter_results_*.json
+
+# Temporary configuration backups
+config_backup_*.json
+agent_config_backup_*.json
+keywords_backup_*.json
