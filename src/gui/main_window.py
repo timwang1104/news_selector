@@ -17,6 +17,7 @@ from .login_dialog import LoginDialog
 from .filter_config_dialog import FilterConfigDialog
 from .filter_progress_dialog import FilterProgressDialog, FilterMetricsDialog
 from .agent_config_dialog import AgentConfigDialog
+from .rss_manager import RSSManager
 
 
 class MainWindow:
@@ -104,53 +105,19 @@ class MainWindow:
         """创建左侧面板"""
         left_frame = ttk.Frame(parent)
         left_frame.pack(side=tk.LEFT, fill=tk.BOTH, padx=(0, 5))
-        
-        # 订阅源标题
-        ttk.Label(left_frame, text="订阅源", font=("Arial", 12, "bold")).pack(pady=(0, 10))
-        
-        # 搜索框
-        search_frame = ttk.Frame(left_frame)
-        search_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        ttk.Label(search_frame, text="搜索:").pack(side=tk.LEFT)
-        self.search_var = tk.StringVar()
-        search_entry = ttk.Entry(search_frame, textvariable=self.search_var)
-        search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 0))
-        search_entry.bind('<Return>', self.search_subscriptions)
-        
-        # 订阅源列表
-        list_frame = ttk.Frame(left_frame)
-        list_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # 创建Treeview用于显示订阅源
-        columns = ("title", "unread")
-        self.subscription_tree = ttk.Treeview(list_frame, columns=columns, show="tree headings", height=15)
-        
-        # 设置列
-        self.subscription_tree.heading("#0", text="订阅源")
-        self.subscription_tree.heading("title", text="标题")
-        self.subscription_tree.heading("unread", text="未读")
-        
-        self.subscription_tree.column("#0", width=200)
-        self.subscription_tree.column("title", width=150)
-        self.subscription_tree.column("unread", width=50)
-        
-        # 添加滚动条
-        sub_scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.subscription_tree.yview)
-        self.subscription_tree.configure(yscrollcommand=sub_scrollbar.set)
-        
-        self.subscription_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        sub_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # 绑定选择事件
-        self.subscription_tree.bind("<<TreeviewSelect>>", self.on_subscription_select)
-        
-        # 按钮框架
-        button_frame = ttk.Frame(left_frame)
-        button_frame.pack(fill=tk.X, pady=(10, 0))
-        
-        ttk.Button(button_frame, text="刷新订阅源", command=self.refresh_subscriptions).pack(fill=tk.X, pady=(0, 5))
-        ttk.Button(button_frame, text="获取最新新闻", command=self.refresh_news).pack(fill=tk.X)
+
+        # 订阅源管理标题
+        ttk.Label(left_frame, text="订阅源管理", font=("Arial", 12, "bold")).pack(pady=(0, 10))
+
+        # 创建订阅源标签页
+        self.subscription_notebook = ttk.Notebook(left_frame)
+        self.subscription_notebook.pack(fill=tk.BOTH, expand=True)
+
+        # 创建Inoreader订阅标签页
+        self.create_inoreader_subscription_tab()
+
+        # 创建自定义RSS标签页
+        self.create_custom_rss_subscription_tab()
     
     def create_right_panel(self, parent):
         """创建右侧面板"""
@@ -163,9 +130,11 @@ class MainWindow:
         
         # 文章列表标签页
         self.create_articles_tab()
-        
+
         # 文章详情标签页
         self.create_article_detail_tab()
+
+
     
     def create_articles_tab(self):
         """创建文章列表标签页"""
@@ -603,7 +572,54 @@ class MainWindow:
 
     def on_article_double_click(self, event):
         """文章双击事件"""
-        self.view_article_detail()
+        selection = self.article_tree.selection()
+        if not selection:
+            return
+
+        # 获取选中的文章
+        item_index = self.article_tree.index(selection[0])
+        if item_index < len(self.current_articles):
+            article = self.current_articles[item_index]
+
+            # 检查是否是RSS文章（通过ID格式判断）
+            if self.is_rss_article(article):
+                # RSS文章：询问用户是打开原文还是查看详情
+                import webbrowser
+                from tkinter import messagebox
+
+                choice = messagebox.askyesnocancel(
+                    "打开文章",
+                    f"文章: {article.title}\n\n选择操作：\n是 - 打开原文链接\n否 - 查看详情\n取消 - 关闭"
+                )
+
+                if choice is True:  # 打开原文
+                    if article.url:
+                        webbrowser.open(article.url)
+                        # 标记为已读
+                        self.mark_rss_article_read(article)
+                elif choice is False:  # 查看详情
+                    self.show_article_detail(article)
+            else:
+                # Inoreader文章：直接查看详情
+                self.show_article_detail(article)
+
+    def is_rss_article(self, article):
+        """判断是否是RSS文章"""
+        # 简单的判断方法：RSS文章的ID通常包含URL或特殊格式
+        return hasattr(article, 'id') and ('#' in article.id or 'http' in article.id)
+
+    def mark_rss_article_read(self, article):
+        """标记RSS文章为已读"""
+        if hasattr(self, 'rss_manager') and self.rss_manager:
+            # 找到对应的RSS订阅源并标记文章为已读
+            for feed in self.rss_manager.current_rss_feeds:
+                for rss_article in feed.articles:
+                    if rss_article.id == article.id:
+                        self.rss_manager.custom_rss_service.mark_article_read(article.id, feed.id)
+                        # 更新本地显示
+                        article.is_read = True
+                        self.update_article_list()
+                        return
 
     def view_article_detail(self):
         """查看文章详情"""
@@ -1370,6 +1386,104 @@ AI筛选通过: {result.ai_filtered_count}
             except Exception as e:
                 messagebox.showerror("错误", f"清除缓存失败: {e}", parent=parent_window)
         self.update_status(f"显示所有文章: {len(self.current_articles)} 篇")
+
+    def create_inoreader_subscription_tab(self):
+        """创建Inoreader订阅标签页"""
+        inoreader_frame = ttk.Frame(self.subscription_notebook)
+        self.subscription_notebook.add(inoreader_frame, text="Inoreader订阅")
+
+        # 搜索框
+        search_frame = ttk.Frame(inoreader_frame)
+        search_frame.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(search_frame, text="搜索:").pack(side=tk.LEFT)
+        self.search_var = tk.StringVar()
+        search_entry = ttk.Entry(search_frame, textvariable=self.search_var)
+        search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 0))
+        search_entry.bind('<Return>', self.search_subscriptions)
+
+        # 订阅源列表
+        list_frame = ttk.Frame(inoreader_frame)
+        list_frame.pack(fill=tk.BOTH, expand=True)
+
+        # 创建Treeview用于显示订阅源
+        columns = ("title", "unread")
+        self.subscription_tree = ttk.Treeview(list_frame, columns=columns, show="tree headings", height=15)
+
+        # 设置列
+        self.subscription_tree.heading("#0", text="订阅源")
+        self.subscription_tree.heading("title", text="标题")
+        self.subscription_tree.heading("unread", text="未读")
+
+        self.subscription_tree.column("#0", width=200)
+        self.subscription_tree.column("title", width=150)
+        self.subscription_tree.column("unread", width=50)
+
+        # 添加滚动条
+        sub_scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.subscription_tree.yview)
+        self.subscription_tree.configure(yscrollcommand=sub_scrollbar.set)
+
+        self.subscription_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        sub_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # 绑定选择事件
+        self.subscription_tree.bind("<<TreeviewSelect>>", self.on_subscription_select)
+
+        # 按钮框架
+        button_frame = ttk.Frame(inoreader_frame)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+
+        ttk.Button(button_frame, text="刷新订阅源", command=self.refresh_subscriptions).pack(fill=tk.X, pady=(0, 5))
+        ttk.Button(button_frame, text="获取最新新闻", command=self.refresh_news).pack(fill=tk.X)
+
+    def create_custom_rss_subscription_tab(self):
+        """创建自定义RSS订阅标签页"""
+        rss_frame = ttk.Frame(self.subscription_notebook)
+        self.subscription_notebook.add(rss_frame, text="自定义RSS")
+
+        # 创建RSS管理器，传入文章回调函数
+        self.rss_manager = RSSManager(rss_frame, self.on_rss_articles_loaded)
+
+    def on_rss_articles_loaded(self, rss_articles, source_name):
+        """处理RSS文章加载事件"""
+        # 将RSS文章转换为NewsArticle格式以便在主文章列表中显示
+        from ..models.news import NewsArticle
+
+        converted_articles = []
+        for rss_article in rss_articles:
+            # 创建NewsArticle对象
+            from ..models.news import NewsAuthor
+
+            # 处理作者信息
+            author_obj = None
+            if rss_article.author:
+                author_obj = NewsAuthor(name=rss_article.author)
+
+            news_article = NewsArticle(
+                id=rss_article.id,
+                title=rss_article.title,
+                summary=rss_article.summary,
+                content=rss_article.content,
+                url=rss_article.url,
+                published=rss_article.published,
+                updated=rss_article.published,  # RSS文章使用发布时间作为更新时间
+                author=author_obj,
+                categories=[],  # RSS文章没有分类信息
+                is_read=rss_article.is_read,
+                is_starred=rss_article.is_starred,
+                feed_title=source_name  # 设置来源标题
+            )
+            converted_articles.append(news_article)
+
+        # 更新当前文章列表
+        self.current_articles = converted_articles
+        self.display_mode = "all"
+
+        # 更新文章列表显示
+        self.update_article_list()
+
+        # 更新状态栏
+        self.update_status(f"显示 {source_name} 文章: {len(converted_articles)} 篇")
 
     def run(self):
         """运行主循环"""

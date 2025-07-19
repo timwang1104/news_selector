@@ -2,6 +2,7 @@
 requests>=2.31.0
 python-dotenv>=1.0.0
 click>=8.1.0
+feedparser>=6.0.10  # RSS解析
 
 # 开发和测试依赖
 pytest>=7.4.0
