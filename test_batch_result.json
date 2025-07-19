@@ -1,0 +1,129 @@
+{
+  "export_time": "2025-07-19T09:26:31.080704",
+  "summary": {
+    "total_subscriptions": 3,
+    "processed_subscriptions": 3,
+    "success_rate": 1.0,
+    "total_articles_fetched": 20,
+    "total_articles_selected": 9,
+    "total_processing_time": 1.854015
+  },
+  "subscription_results": [
+    {
+      "subscription_id": "feed/https://feeds.arstechnica.com/arstechnica/index",
+      "subscription_title": "Ars Technica",
+      "articles_fetched": 10,
+      "articles_selected": 5,
+      "processing_time": 0.564863203918457,
+      "selected_articles": [
+        {
+          "id": "tag:google.com,2005:reader/item/0000000aacbb6309",
+          "title": "As White House talks about impounding NASA funding, Congress takes the threat seriously",
+          "url": "https://arstechnica.com/space/2025/07/a-huge-fight-looms-over-the-nasa-budget-this-fall/",
+          "published": "2025-07-19T04:54:25",
+          "final_score": 1.0,
+          "summary": "This has been a good week for the US space agency in terms of the federal budget. On Tuesday, a committee in the US House of Representatives passed a $24.8 billion budget bill for the coming fiscal year. Then, two days later a Senate committee passed a $24.9 billion budget for NASA. Both of these measures would keep funding more or less at the level of the current fiscal year and, for the most part, keep the space agency's programs going on their current trajectories. These bills are not final. Both must move through the full House and Senate, and then be reconciled before going to President Trump for his signature. And time is running out, with fiscal year 2026 set to begin on October 1, just a little more than ten weeks from now.Read full article Comments",
+          "content": "This has been a good week for the US space agency in terms of the federal budget. On Tuesday, a committee in the US House of Representatives passed a $24.8 billion budget bill for the coming fiscal year. Then, two days later a Senate committee passed a $24.9 billion budget for NASA. Both of these measures would keep funding more or less at the level of the current fiscal year and, for the most part, keep the space agency's programs going on their current trajectories. These bills are not final. ...",
+          "keyword_score": 1.0
+        },
+        {
+          "id": "tag:google.com,2005:reader/item/0000000aacacbdb4",
+          "title": "Exhausted man defeats AI model in world coding championship",
+          "url": "https://arstechnica.com/ai/2025/07/exhausted-man-defeats-ai-model-in-world-coding-championship/",
+          "published": "2025-07-19T03:34:14",
+          "final_score": 1.0,
+          "summary": "A Polish programmer running on fumes recently accomplished what may soon become impossible: beating an advanced AI model from OpenAI in a head-to-head coding competition. The 10-hour marathon left him \"completely exhausted.\" On Wednesday, programmer Przemysław Dębiak (known as \"Psyho\"), a former OpenAI employee, narrowly defeated the custom AI model in the AtCoder World Tour Finals 2025 Heuristic contest in Tokyo. AtCoder, a Japanese platform that hosts competitive programming contests and maintains global rankings, held what may be the first contest where an AI model competed directly against top human programmers in a major onsite world championship. During the event, the maker of ChatGPT participated as a sponsor and entered an AI model in a special exhibition match titled \"Humans vs AI.\" Despite the tireless nature of silicon, the company walked away with second place. \"Humanity has prevailed (for now!),\" wrote Dębiak on X, noting he had little sleep while competing in several competitions across three days. \"I'm completely exhausted. ... I'm barely alive.\"Read full article Comments",
+          "content": "A Polish programmer running on fumes recently accomplished what may soon become impossible: beating an advanced AI model from OpenAI in a head-to-head coding competition. The 10-hour marathon left him \"completely exhausted.\" On Wednesday, programmer Przemysław Dębiak (known as \"Psyho\"), a former OpenAI employee, narrowly defeated the custom AI model in the AtCoder World Tour Finals 2025 Heuristic contest in Tokyo. AtCoder, a Japanese platform that hosts competitive programming contests and maint...",
+          "keyword_score": 1.0
+        },
+        {
+          "id": "tag:google.com,2005:reader/item/0000000aacacbde8",
+          "title": "Phishers have found a way to downgrade—not bypass—FIDO MFA",
+          "url": "https://arstechnica.com/security/2025/07/no-phishers-are-not-bypassing-fido-mfa-at-least-not-yet-heres-why/",
+          "published": "2025-07-19T03:07:21",
+          "final_score": 0.76,
+          "summary": "Researchers recently reported encountering a phishing attack in the wild that bypasses a multifactor authentication scheme based on FIDO (Fast Identity Online), the industry-wide standard being adopted by thousands of sites and enterprises. If true, the attack, reported in a blog post Thursday by security firm Expel, would be huge news, since FIDO is widely regarded as being immune to credential phishing attacks. After analyzing the Expel write-up, I’m confident that the attack doesn’t bypass FIDO protections, at least not in the sense that the word “bypass” is commonly used in security circles. Rather, the attack downgrades the MFA process to a weaker, non-FIDO-based process. As such, the attack is better described as a FIDO downgrade attack. More about that shortly. For now, let’s describe what Expel researchers reported. Abusing cross-device sign-ins Expel said the “novel attack technique” begins with an email that links to a fake login page from Okta, a widely used authentication provider. It prompts visitors to enter their valid user name and password. People who take the bait have now helped the attack group, which Expel said is named PoisonSeed, clear the first big hurdle in gaining unauthorized access to the Okta account.Read full article Comments",
+          "content": "Researchers recently reported encountering a phishing attack in the wild that bypasses a multifactor authentication scheme based on FIDO (Fast Identity Online), the industry-wide standard being adopted by thousands of sites and enterprises. If true, the attack, reported in a blog post Thursday by security firm Expel, would be huge news, since FIDO is widely regarded as being immune to credential phishing attacks. After analyzing the Expel write-up, I’m confident that the attack doesn’t bypass FI...",
+          "keyword_score": 0.76
+        },
+        {
+          "id": "tag:google.com,2005:reader/item/0000000aaca24c49",
+          "title": "Netflix’s first show with generative AI is a sign of what’s to come in TV, film",
+          "url": "https://arstechnica.com/gadgets/2025/07/netflixs-first-show-with-generative-ai-is-a-sign-of-whats-to-come-in-tv-film/",
+          "published": "2025-07-19T01:29:04",
+          "final_score": 1.0,
+          "summary": "Netflix used generative AI in an original, scripted series that debuted this year, it revealed this week. Producers used the technology to create a scene in which a building collapses, hinting at the growing use of generative AI in entertainment. During a call with investors yesterday, Netflix co-CEO Ted Sarandos revealed that Netflix's Argentine show The Eternaut, which premiered in April, is \"the very first GenAI final footage to appear on screen in a Netflix, Inc. original series or film.” Sarandos further explained, per a transcript of the call, saying: The creators wanted to show a building collapsing in Buenos Aires. So our iLine team, [which is the production innovation group inside the visual effects house at Netflix effects studio Scanline], partnered with their creative team using AI-powered tools. ... And in fact, that VFX sequence was completed 10 times faster than it could have been completed with visual, traditional VFX tools and workflows. And, also, the cost of it would just not have been feasible for a show in that budget. Sarandos claimed that viewers have been \"thrilled with the results\"; although that likely has much to do with how the rest of the series, based on a comic, plays out, not just one, AI-crafted scene.Read full article Comments",
+          "content": "Netflix used generative AI in an original, scripted series that debuted this year, it revealed this week. Producers used the technology to create a scene in which a building collapses, hinting at the growing use of generative AI in entertainment. During a call with investors yesterday, Netflix co-CEO Ted Sarandos revealed that Netflix's Argentine show The Eternaut, which premiered in April, is \"the very first GenAI final footage to appear on screen in a Netflix, Inc. original series or film.” Sa...",
+          "keyword_score": 1.0
+        },
+        {
+          "id": "tag:google.com,2005:reader/item/0000000aac9202f6",
+          "title": "After a partly successful test flight, European firm eyes space station mission",
+          "url": "https://arstechnica.com/space/2025/07/european-firm-has-an-ambitious-plan-to-dock-with-the-space-station-in-2028/",
+          "published": "2025-07-19T00:00:46",
+          "final_score": 0.6799999999999999,
+          "summary": "Last month, the parachutes on Hélène Huby's small spacecraft failed to deploy, and the vehicle and its cargo crashed into the ocean on Earth. It was both a success and a failure. The success was that after Huby founded The Exploration Company in Europe, she managed to move nimbly with the \"Mission Possible\" spacecraft such that it cost less than $25 million to build and reached space in less than three years. The vehicle ticked off a number of successes in spaceflight before making a controlled descent through the atmosphere.Read full article Comments",
+          "content": "Last month, the parachutes on Hélène Huby's small spacecraft failed to deploy, and the vehicle and its cargo crashed into the ocean on Earth. It was both a success and a failure. The success was that after Huby founded The Exploration Company in Europe, she managed to move nimbly with the \"Mission Possible\" spacecraft such that it cost less than $25 million to build and reached space in less than three years. The vehicle ticked off a number of successes in spaceflight before making a controlled ...",
+          "keyword_score": 0.6799999999999999
+        }
+      ]
+    },
+    {
+      "subscription_id": "feed/https://feeds.bbci.co.uk/news/technology/rss.xml",
+      "subscription_title": "BBC News - Technology",
+      "articles_fetched": 0,
+      "articles_selected": 0,
+      "processing_time": 0.3800978660583496,
+      "selected_articles": []
+    },
+    {
+      "subscription_id": "feed/https://feeds.bloomberg.com/technology/news.rss",
+      "subscription_title": "Bloomberg Technology",
+      "articles_fetched": 10,
+      "articles_selected": 4,
+      "processing_time": 0.3935894047088623,
+      "selected_articles": [
+        {
+          "id": "tag:google.com,2005:reader/item/0000000aacbe200b",
+          "title": "Peter Thiel-Backed Crypto Exchange Bullish Files for IPO",
+          "url": "https://www.bloomberg.com/news/articles/2025-07-18/bullish-files-for-ipo-in-latest-crypto-push-onto-public-market",
+          "published": "2025-07-19T05:56:17",
+          "final_score": 0.9000000000000001,
+          "summary": "Bullish, a digital-asset exchange operator whose backers have included billionaire Peter Thiel, filed for an initial public offering in the latest push onto public markets by cryptocurrency companies.",
+          "content": "Bullish, a digital-asset exchange operator whose backers have included billionaire Peter Thiel, filed for an initial public offering in the latest push onto public markets by cryptocurrency companies.",
+          "keyword_score": 0.9000000000000001
+        },
+        {
+          "id": "tag:google.com,2005:reader/item/0000000aacb2566e",
+          "title": "Trump Says Crypto Bill Will Secure Dollar’s Status",
+          "url": "https://www.bloomberg.com/news/videos/2025-07-18/trump-says-crypto-bill-will-secure-dollar-s-status-video",
+          "published": "2025-07-19T04:12:47",
+          "final_score": 0.8,
+          "summary": "President Donald Trump signed the first federal bill to regulate stablecoins, calling it a “giant step to cement American dominance of global finance and crypto technology.”",
+          "content": "President Donald Trump signed the first federal bill to regulate stablecoins, calling it a “giant step to cement American dominance of global finance and crypto technology.”",
+          "keyword_score": 0.8
+        },
+        {
+          "id": "tag:google.com,2005:reader/item/0000000aaca94e37",
+          "title": "Google’s Windsurf Deal Is a Wake-Up Call for AI Startup Employees",
+          "url": "https://www.bloomberg.com/news/newsletters/2025-07-18/google-s-windsurf-deal-a-wake-up-call-for-ai-startup-employees",
+          "published": "2025-07-19T03:00:06",
+          "final_score": 0.8999999999999999,
+          "summary": "Big Tech’s growing reliance on licensing deals to scoop up top talent from AI startups risks leaving many rank-and-file workers in limbo. But first...",
+          "content": "Big Tech’s growing reliance on licensing deals to scoop up top talent from AI startups risks leaving many rank-and-file workers in limbo. But first...",
+          "keyword_score": 0.8999999999999999
+        },
+        {
+          "id": "tag:google.com,2005:reader/item/0000000aac898fd9",
+          "title": "House China Panel Faults Trump’s Move to Ease Nvidia AI Chip Sales",
+          "url": "https://www.bloomberg.com/news/articles/2025-07-18/house-china-panel-faults-trump-move-to-ease-nvidia-ai-chip-sales",
+          "published": "2025-07-18T23:04:13",
+          "final_score": 1.0,
+          "summary": "The Trump administration’s decision allowing Nvidia Corp. to resume shipments of its H20 artificial intelligence chips to China risks bolstering Beijing’s military capabilities and expanding its capacity to compete with the US in AI, according to the head of the US House Select Committee on China.",
+          "content": "The Trump administration’s decision allowing Nvidia Corp. to resume shipments of its H20 artificial intelligence chips to China risks bolstering Beijing’s military capabilities and expanding its capacity to compete with the US in AI, according to the head of the US House Select Committee on China.",
+          "keyword_score": 1.0
+        }
+      ]
+    }
+  ]
+}

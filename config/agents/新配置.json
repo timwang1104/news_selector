@@ -1,0 +1,59 @@
+{
+  "config_name": "新配置",
+  "created_at": "2025-07-18T23:15:49.521474",
+  "updated_at": "2025-07-18T23:15:49.521492",
+  "api_config": {
+    "name": "新配置",
+    "description": "",
+    "api_key": "",
+    "base_url": "",
+    "model_name": "gpt-3.5-turbo",
+    "temperature": 0.3,
+    "max_tokens": 1000,
+    "timeout": 30,
+    "retry_times": 3,
+    "retry_delay": 1,
+    "headers": {},
+    "proxy": "",
+    "verify_ssl": true
+  },
+  "prompt_config": {
+    "name": "新提示词",
+    "description": "",
+    "version": "1.0",
+    "system_prompt": "",
+    "evaluation_prompt": "",
+    "batch_evaluation_prompt": "",
+    "dimensions": [
+      {
+        "name": "政策相关性",
+        "description": "与科技政策的相关程度",
+        "weight": 1.0
+      },
+      {
+        "name": "创新影响",
+        "description": "对科技创新的推动作用",
+        "weight": 1.0
+      },
+      {
+        "name": "实用性",
+        "description": "可操作性和实施性",
+        "weight": 1.0
+      }
+    ],
+    "scoring_range": {
+      "min": 0,
+      "max": 10,
+      "total_max": 30
+    },
+    "output_format": "json",
+    "examples": [],
+    "instructions": [
+      "总分为各维度分数之和",
+      "评估理由要具体明确",
+      "置信度反映评估的确定程度"
+    ]
+  },
+  "is_active": true,
+  "is_default": false
+}

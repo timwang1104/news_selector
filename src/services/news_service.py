@@ -12,8 +12,9 @@ from ..models.subscription import StreamInfo
 class NewsService:
     """新闻服务"""
 
-    def __init__(self, auth=None):
-        self.client = InoreaderClient(auth)
+    def __init__(self, auth=None, use_cache: bool = True):
+        self.client = InoreaderClient(auth, use_cache=use_cache)
+        self.use_cache = use_cache
     
     def get_latest_articles(self, 
                           count: Optional[int] = None,
@@ -237,4 +238,29 @@ class NewsService:
             'unread_count': unread_count,
             'starred_count': starred_count,
             'feeds': feeds
+        }
+
+    def refresh_cache(self):
+        """刷新缓存 - 清除所有缓存数据"""
+        self.client.clear_cache()
+
+    def refresh_articles_cache(self):
+        """刷新文章缓存"""
+        # 清除相关的缓存
+        self.client.clear_cache('stream/contents/user/-/state/com.google/reading-list')
+        self.client.clear_cache('stream/contents/user/-/state/com.google/starred')
+
+    def refresh_feed_cache(self, feed_id: str):
+        """刷新特定订阅源的缓存"""
+        self.client.clear_cache(f'stream/contents/feed/{feed_id}')
+
+    def get_cache_info(self) -> Dict[str, Any]:
+        """获取缓存信息"""
+        cache_stats = self.client.get_cache_stats()
+        region_info = self.client.get_current_region_info()
+
+        return {
+            'cache_stats': cache_stats,
+            'current_region': region_info,
+            'cache_enabled': self.use_cache
         }

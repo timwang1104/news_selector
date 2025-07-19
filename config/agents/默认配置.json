@@ -1,0 +1,60 @@
+{
+  "config_name": "默认配置",
+  "created_at": "2025-07-19T07:44:26.132759",
+  "updated_at": "2025-07-19T07:44:26.132777",
+  "api_config": {
+    "name": "OpenAI GPT",
+    "description": "OpenAI官方API配置",
+    "api_key": "sk-tljubtynfvjndrncuxpudcaueuomrbwtlpcefdagfuuzxzgz",
+    "base_url": "https://api.siliconflow.cn/v1",
+    "model_name": "moonshotai/Kimi-K2-Instruct",
+    "temperature": 0.3,
+    "max_tokens": 1000,
+    "timeout": 30,
+    "retry_times": 3,
+    "retry_delay": 1,
+    "headers": {},
+    "proxy": "",
+    "verify_ssl": true,
+    "provider": "siliconflow"
+  },
+  "prompt_config": {
+    "name": "科技政策评估",
+    "description": "用于评估科技新闻对政策制定的价值",
+    "version": "1.0",
+    "system_prompt": "你是上海市科委的专业顾问，专门负责评估科技新闻对政策制定的价值。",
+    "evaluation_prompt": "你是上海市科委的专业顾问，请评估以下文章对上海科技发展的相关性和价值。\n\n文章信息：\n标题：{title}\n摘要：{summary}\n内容预览：{content_preview}\n\n请从以下三个维度进行评估（每个维度0-10分）：\n\n1. 政策相关性 (0-10分)\n2. 创新影响 (0-10分)\n3. 实用性 (0-10分)\n\n请按以下JSON格式返回评估结果：\n{{\n    \"relevance_score\": <政策相关性分数>,\n    \"innovation_impact\": <创新影响分数>,\n    \"practicality\": <实用性分数>,\n    \"total_score\": <总分>,\n    \"reasoning\": \"<详细评估理由>\",\n    \"confidence\": <置信度，0-1之间的小数>\n}}",
+    "batch_evaluation_prompt": "你是上海市科委的专业顾问，请批量评估以下文章对上海科技发展的相关性和价值。\n\n文章列表：\n{articles_info}\n\n请对每篇文章进行评估，返回JSON数组格式的结果。",
+    "dimensions": [
+      {
+        "name": "政策相关性",
+        "description": "与科技政策的相关程度",
+        "weight": 1.0
+      },
+      {
+        "name": "创新影响",
+        "description": "对科技创新的推动作用",
+        "weight": 1.0
+      },
+      {
+        "name": "实用性",
+        "description": "可操作性和实施性",
+        "weight": 1.0
+      }
+    ],
+    "scoring_range": {
+      "min": 0,
+      "max": 10,
+      "total_max": 30
+    },
+    "output_format": "json",
+    "examples": [],
+    "instructions": [
+      "总分为各维度分数之和",
+      "评估理由要具体明确",
+      "置信度反映评估的确定程度"
+    ]
+  },
+  "is_active": true,
+  "is_default": true
+}

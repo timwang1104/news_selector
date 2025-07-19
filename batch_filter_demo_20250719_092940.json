@@ -1,0 +1,112 @@
+{
+  "export_time": "2025-07-19T09:29:42.488117",
+  "summary": {
+    "total_subscriptions": 5,
+    "processed_subscriptions": 5,
+    "success_rate": 1.0,
+    "total_articles_fetched": 27,
+    "total_articles_selected": 7,
+    "total_processing_time": 1.969588
+  },
+  "subscription_results": [
+    {
+      "subscription_id": "feed/https://feeds.bloomberg.com/technology/news.rss",
+      "subscription_title": "Bloomberg Technology",
+      "articles_fetched": 13,
+      "articles_selected": 3,
+      "processing_time": 0.49902999827575684,
+      "selected_articles": [
+        {
+          "id": "tag:google.com,2005:reader/item/0000000aac898fd9",
+          "title": "House China Panel Faults Trump’s Move to Ease Nvidia AI Chip Sales",
+          "url": "https://www.bloomberg.com/news/articles/2025-07-18/house-china-panel-faults-trump-move-to-ease-nvidia-ai-chip-sales",
+          "published": "2025-07-18T23:04:13",
+          "final_score": 1.0,
+          "keyword_score": 1.0
+        },
+        {
+          "id": "tag:google.com,2005:reader/item/0000000aacbe200b",
+          "title": "Peter Thiel-Backed Crypto Exchange Bullish Files for IPO",
+          "url": "https://www.bloomberg.com/news/articles/2025-07-18/bullish-files-for-ipo-in-latest-crypto-push-onto-public-market",
+          "published": "2025-07-19T05:56:17",
+          "final_score": 0.9000000000000001,
+          "keyword_score": 0.9000000000000001
+        },
+        {
+          "id": "tag:google.com,2005:reader/item/0000000aaca94e37",
+          "title": "Google’s Windsurf Deal Is a Wake-Up Call for AI Startup Employees",
+          "url": "https://www.bloomberg.com/news/newsletters/2025-07-18/google-s-windsurf-deal-a-wake-up-call-for-ai-startup-employees",
+          "published": "2025-07-19T03:00:06",
+          "final_score": 0.8999999999999999,
+          "keyword_score": 0.8999999999999999
+        }
+      ]
+    },
+    {
+      "subscription_id": "feed/https://feeds.arstechnica.com/arstechnica/index",
+      "subscription_title": "Ars Technica",
+      "articles_fetched": 12,
+      "articles_selected": 3,
+      "processing_time": 0.5533294921569825,
+      "selected_articles": [
+        {
+          "id": "tag:google.com,2005:reader/item/0000000aacbb6309",
+          "title": "As White House talks about impounding NASA funding, Congress takes the threat seriously",
+          "url": "https://arstechnica.com/space/2025/07/a-huge-fight-looms-over-the-nasa-budget-this-fall/",
+          "published": "2025-07-19T04:54:25",
+          "final_score": 1.0,
+          "keyword_score": 1.0
+        },
+        {
+          "id": "tag:google.com,2005:reader/item/0000000aacacbdb4",
+          "title": "Exhausted man defeats AI model in world coding championship",
+          "url": "https://arstechnica.com/ai/2025/07/exhausted-man-defeats-ai-model-in-world-coding-championship/",
+          "published": "2025-07-19T03:34:14",
+          "final_score": 1.0,
+          "keyword_score": 1.0
+        },
+        {
+          "id": "tag:google.com,2005:reader/item/0000000aaca24c49",
+          "title": "Netflix’s first show with generative AI is a sign of what’s to come in TV, film",
+          "url": "https://arstechnica.com/gadgets/2025/07/netflixs-first-show-with-generative-ai-is-a-sign-of-whats-to-come-in-tv-film/",
+          "published": "2025-07-19T01:29:04",
+          "final_score": 1.0,
+          "keyword_score": 1.0
+        }
+      ]
+    },
+    {
+      "subscription_id": "feed/https://www.cnbc.com/id/19855906/device/rss/rss.html",
+      "subscription_title": "feed: Tech Stories",
+      "articles_fetched": 0,
+      "articles_selected": 0,
+      "processing_time": 0.3690643310546875,
+      "selected_articles": []
+    },
+    {
+      "subscription_id": "feed/https://itif.org/feed/rss.xml",
+      "subscription_title": "Information Technology and Innovation Foundation Feed",
+      "articles_fetched": 2,
+      "articles_selected": 1,
+      "processing_time": 0.3620037378387451,
+      "selected_articles": [
+        {
+          "id": "tag:google.com,2005:reader/item/0000000aaca121df",
+          "title": "How Foreign Economic Attacks on US Tech Firms Weaken America",
+          "url": "https://itif.org/events/2025/08/14/how-foreign-economic-attacks-on-us-tech-firms-weaken-america/",
+          "published": "2025-07-19T02:05:37",
+          "final_score": 0.98,
+          "keyword_score": 0.98
+        }
+      ]
+    },
+    {
+      "subscription_id": "feed/https://feeds.bbci.co.uk/news/technology/rss.xml",
+      "subscription_title": "BBC News - Technology",
+      "articles_fetched": 0,
+      "articles_selected": 0,
+      "processing_time": 1.4657912254333496,
+      "selected_articles": []
+    }
+  ]
+}
