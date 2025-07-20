@@ -15,10 +15,11 @@ from ..models.rss import RSSFeed
 class RSSManager:
     """RSS管理界面"""
 
-    def __init__(self, parent_frame: ttk.Frame, article_callback=None):
+    def __init__(self, parent_frame: ttk.Frame, article_callback=None, auth=None):
         self.parent_frame = parent_frame
         self.custom_rss_service = CustomRSSService()
         self.article_callback = article_callback  # 回调函数，用于通知主窗口更新文章列表
+        self.auth = auth  # 认证信息
 
         # 数据
         self.current_rss_feeds: List[RSSFeed] = []
@@ -49,6 +50,7 @@ class RSSManager:
         
         ttk.Button(toolbar, text="添加RSS", command=self.add_rss_subscription).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="预设源", command=self.show_preset_feeds).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(toolbar, text="从Inoreader导入", command=self.import_from_inoreader).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="编辑", command=self.edit_rss_subscription).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="启用/停用", command=self.toggle_feed_status).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="删除", command=self.remove_rss_subscription).pack(side=tk.LEFT, padx=(0, 5))
@@ -292,6 +294,23 @@ class RSSManager:
     def show_preset_feeds(self):
         """显示预设RSS源选择对话框"""
         PresetFeedsDialog(self.parent_frame, self.custom_rss_service, self.refresh_rss_feed_list)
+
+    def import_from_inoreader(self):
+        """从Inoreader导入订阅源"""
+        try:
+            # 检查认证信息
+            if not self.auth or not self.auth.is_authenticated():
+                from tkinter import messagebox
+                messagebox.showwarning("未登录", "请先在主界面登录Inoreader账户")
+                return
+
+            # 打开导出导入对话框，传递刷新回调
+            from .subscription_export_dialog import SubscriptionExportDialog
+            SubscriptionExportDialog(self.parent_frame, self.auth, self.refresh_rss_feed_list)
+
+        except Exception as e:
+            from tkinter import messagebox
+            messagebox.showerror("错误", f"打开导入对话框失败: {e}")
 
     def show_feed_context_menu(self, event):
         """显示订阅源右键菜单"""

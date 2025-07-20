@@ -32,10 +32,10 @@ class AIFilterConfig:
     base_url: str = ""
     temperature: float = 0.3
     max_tokens: int = 1000
-    
+
     # 筛选配置
-    threshold: int = 20             # 总分阈值 (满分30)
     max_requests: int = 50          # 最大请求数
+    max_selected: int = 3           # 最大筛选数量（按评分排序取前N条）
     batch_size: int = 5             # 批处理大小
     
     # 性能配置
@@ -59,7 +59,6 @@ class FilterChainConfig:
     enable_keyword_filter: bool = True
     enable_ai_filter: bool = True
     keyword_threshold: float = 0.6
-    ai_threshold: int = 20
     final_score_threshold: float = 0.7
     
     # 流程控制
@@ -137,14 +136,12 @@ class FilterConfigManager:
         ai_config = AIFilterConfig(
             api_key=os.getenv("OPENAI_API_KEY", ""),
             base_url=os.getenv("OPENAI_BASE_URL", ""),
-            threshold=20,
             max_requests=50
         )
 
         # 筛选链配置
         chain_config = FilterChainConfig(
             keyword_threshold=0.65,
-            ai_threshold=20,
             final_score_threshold=0.7,
             max_keyword_results=100,
             max_ai_requests=50,

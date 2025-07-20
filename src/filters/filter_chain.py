@@ -19,31 +19,67 @@ logger = logging.getLogger(__name__)
 
 class FilterProgressCallback:
     """筛选进度回调接口"""
-    
+
     def on_start(self, total_articles: int):
         """筛选开始"""
         pass
-    
+
     def on_keyword_progress(self, processed: int, total: int):
         """关键词筛选进度"""
         pass
-    
+
     def on_keyword_complete(self, results_count: int):
         """关键词筛选完成"""
         pass
-    
+
+    def on_ai_start(self, total_articles: int):
+        """AI筛选开始"""
+        pass
+
+    def on_ai_article_start(self, article_title: str, current: int, total: int):
+        """开始评估单篇文章"""
+        pass
+
+    def on_ai_article_complete(self, article_title: str, evaluation_score: float, processing_time: float):
+        """单篇文章评估完成"""
+        pass
+
+    def on_ai_batch_start(self, batch_size: int, batch_number: int, total_batches: int):
+        """AI批处理开始"""
+        pass
+
+    def on_ai_batch_complete(self, batch_size: int, batch_number: int, total_batches: int, avg_score: float):
+        """AI批处理完成"""
+        pass
+
     def on_ai_progress(self, processed: int, total: int):
         """AI筛选进度"""
         pass
-    
+
+    def on_ai_ranking_start(self, total_results: int):
+        """AI结果排序开始"""
+        pass
+
+    def on_ai_ranking_complete(self, selected_count: int, total_count: int):
+        """AI结果排序完成"""
+        pass
+
     def on_ai_complete(self, results_count: int):
         """AI筛选完成"""
         pass
-    
+
+    def on_ai_error(self, article_title: str, error: str):
+        """AI评估错误"""
+        pass
+
+    def on_ai_fallback(self, article_title: str, reason: str):
+        """AI降级处理"""
+        pass
+
     def on_complete(self, final_count: int):
         """筛选完成"""
         pass
-    
+
     def on_error(self, error: str):
         """筛选错误"""
         pass
@@ -200,17 +236,12 @@ class FilterChain:
                 )
             
             ai_results = self.ai_filter.filter(articles)
-            
-            # 应用AI阈值过滤
-            filtered_ai_results = [
-                r for r in ai_results 
-                if r.evaluation.total_score >= self.config.ai_threshold
-            ]
-            
-            result.ai_filtered_count = len(filtered_ai_results)
+
+            # AI筛选器已经按评分排序并返回前N条结果，无需再次过滤
+            result.ai_filtered_count = len(ai_results)
             result.ai_filter_time = time.time() - start_time
-            
-            return filtered_ai_results
+
+            return ai_results
             
         except Exception as e:
             result.errors.append(f"AI筛选失败: {str(e)}")
@@ -265,19 +296,26 @@ class FilterChain:
         
         ai_results = []
         batch_size = 5  # AI筛选使用较小的批次
-        
+
+        # 收集所有AI评估结果
+        all_results = []
         for i in range(0, len(articles), batch_size):
             batch = articles[i:i + batch_size]
             batch_results = []
-            
+
             for article in batch:
                 single_result = self.ai_filter.filter_single(article)
-                if single_result and single_result.evaluation.total_score >= self.config.ai_threshold:
+                if single_result:
                     batch_results.append(single_result)
-            
-            ai_results.extend(batch_results)
+
+            all_results.extend(batch_results)
             callback.on_ai_progress(min(i + batch_size, len(articles)), len(articles))
-        
+
+        # 按评分排序并取前N条
+        all_results.sort(key=lambda x: x.evaluation.total_score, reverse=True)
+        max_selected = getattr(self.ai_filter.config, 'max_selected', 3)
+        ai_results = all_results[:max_selected]
+
         result.ai_filtered_count = len(ai_results)
         return ai_results
 
@@ -339,10 +377,7 @@ class FilterChain:
         if keyword_result.relevance_score < self.config.keyword_threshold:
             return False, "关键词相关性不足"
 
-        # AI筛选未通过
-        if ai_result and ai_result.evaluation.total_score < self.config.ai_threshold:
-            return False, "AI评估分数不足"
-
+        # AI筛选已经按排名选择了最优文章，无需再次阈值判断
         # AI筛选失败但关键词分数较高
         if ai_result is None and keyword_result.relevance_score >= 0.8:
             return True, None

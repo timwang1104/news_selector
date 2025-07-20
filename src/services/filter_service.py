@@ -175,25 +175,79 @@ class FilterService:
             callback.on_start(len(articles))
 
         try:
+            # 通知AI筛选开始
+            if callback and hasattr(callback, 'on_ai_start'):
+                callback.on_ai_start(len(articles))
+
             # 使用批处理方式进行AI筛选以支持进度回调
-            ai_results = []
+            all_results = []
             batch_size = 5  # AI筛选每批处理5篇文章（较慢）
+            total_batches = (len(articles) + batch_size - 1) // batch_size
 
-            for i in range(0, len(articles), batch_size):
+            for batch_num, i in enumerate(range(0, len(articles), batch_size), 1):
                 batch = articles[i:i + batch_size]
+
+                # 通知批处理开始
+                if callback and hasattr(callback, 'on_ai_batch_start'):
+                    callback.on_ai_batch_start(len(batch), batch_num, total_batches)
+
                 batch_results = []
+                batch_scores = []
 
-                for article in batch:
-                    single_result = self.ai_filter.filter_single(article)
-                    if single_result and single_result.evaluation.total_score >= self.ai_filter.config.threshold * 30:
-                        batch_results.append(single_result)
+                for j, article in enumerate(batch):
+                    article_index = i + j + 1
 
-                ai_results.extend(batch_results)
+                    # 通知开始评估单篇文章
+                    if callback and hasattr(callback, 'on_ai_article_start'):
+                        callback.on_ai_article_start(article.title, article_index, len(articles))
+
+                    try:
+                        single_result = self.ai_filter.filter_single(article)
+                        if single_result:
+                            batch_results.append(single_result)
+                            batch_scores.append(single_result.evaluation.total_score)
+
+                            # 通知文章评估完成
+                            if callback and hasattr(callback, 'on_ai_article_complete'):
+                                callback.on_ai_article_complete(
+                                    article.title,
+                                    single_result.evaluation.total_score,
+                                    single_result.processing_time
+                                )
+                        else:
+                            # 评估失败
+                            if callback and hasattr(callback, 'on_ai_error'):
+                                callback.on_ai_error(article.title, "评估返回空结果")
+
+                    except Exception as e:
+                        # 评估异常
+                        if callback and hasattr(callback, 'on_ai_error'):
+                            callback.on_ai_error(article.title, str(e))
+
+                all_results.extend(batch_results)
+
+                # 通知批处理完成
+                if callback and hasattr(callback, 'on_ai_batch_complete'):
+                    avg_score = sum(batch_scores) / len(batch_scores) if batch_scores else 0
+                    callback.on_ai_batch_complete(len(batch), batch_num, total_batches, avg_score)
 
                 # 更新进度
                 if callback:
                     processed = min(i + batch_size, len(articles))
                     callback.on_ai_progress(processed, len(articles))
+
+            # 通知开始排序
+            if callback and hasattr(callback, 'on_ai_ranking_start'):
+                callback.on_ai_ranking_start(len(all_results))
+
+            # 按评分排序并取前N条
+            all_results.sort(key=lambda x: x.evaluation.total_score, reverse=True)
+            max_selected = getattr(self.ai_filter.config, 'max_selected', 3)
+            ai_results = all_results[:max_selected]
+
+            # 通知排序完成
+            if callback and hasattr(callback, 'on_ai_ranking_complete'):
+                callback.on_ai_ranking_complete(len(ai_results), len(all_results))
 
             # 通知AI筛选完成
             if callback:
@@ -305,22 +359,72 @@ class CLIProgressCallback(FilterProgressCallback):
         if self.show_progress:
             print(f"✅ 关键词筛选完成: {results_count} 篇文章通过")
     
+    def on_ai_start(self, total_articles: int):
+        """AI筛选开始"""
+        if self.show_progress:
+            print(f"🤖 开始AI智能评估 {total_articles} 篇文章...")
+
+    def on_ai_article_start(self, article_title: str, current: int, total: int):
+        """开始评估单篇文章"""
+        if self.show_progress:
+            display_title = article_title[:50] + "..." if len(article_title) > 50 else article_title
+            print(f"🔍 [{current}/{total}] 评估: {display_title}")
+
+    def on_ai_article_complete(self, article_title: str, evaluation_score: float, processing_time: float):
+        """单篇文章评估完成"""
+        if self.show_progress:
+            display_title = article_title[:40] + "..." if len(article_title) > 40 else article_title
+            score_emoji = "🟢" if evaluation_score >= 20 else "🟡" if evaluation_score >= 15 else "🔴"
+            print(f"✅ {display_title} - 评分: {evaluation_score:.1f}/30 {score_emoji}")
+
+    def on_ai_batch_start(self, batch_size: int, batch_number: int, total_batches: int):
+        """AI批处理开始"""
+        if self.show_progress:
+            print(f"📦 处理第 {batch_number}/{total_batches} 批 ({batch_size} 篇)")
+
+    def on_ai_batch_complete(self, batch_size: int, batch_number: int, total_batches: int, avg_score: float):
+        """AI批处理完成"""
+        if self.show_progress:
+            print(f"✅ 第 {batch_number}/{total_batches} 批完成，平均评分: {avg_score:.1f}/30")
+
     def on_ai_progress(self, processed: int, total: int):
         """AI筛选进度"""
         if self.show_progress:
             percentage = (processed / total) * 100
             print(f"🤖 AI筛选进度: {processed}/{total} ({percentage:.1f}%)")
-    
+
+    def on_ai_ranking_start(self, total_results: int):
+        """AI结果排序开始"""
+        if self.show_progress:
+            print(f"📊 正在对 {total_results} 个评估结果进行排序...")
+
+    def on_ai_ranking_complete(self, selected_count: int, total_count: int):
+        """AI结果排序完成"""
+        if self.show_progress:
+            print(f"🏆 排序完成，从 {total_count} 个结果中选出前 {selected_count} 篇")
+
     def on_ai_complete(self, results_count: int):
         """AI筛选完成"""
         if self.show_progress:
             print(f"✅ AI筛选完成: {results_count} 篇文章通过")
-    
+
+    def on_ai_error(self, article_title: str, error: str):
+        """AI评估错误"""
+        if self.show_progress:
+            display_title = article_title[:40] + "..." if len(article_title) > 40 else article_title
+            print(f"❌ {display_title} - 评估失败: {error}")
+
+    def on_ai_fallback(self, article_title: str, reason: str):
+        """AI降级处理"""
+        if self.show_progress:
+            display_title = article_title[:40] + "..." if len(article_title) > 40 else article_title
+            print(f"⚠️ {display_title} - 使用降级评估: {reason}")
+
     def on_complete(self, final_count: int):
         """筛选完成"""
         if self.show_progress:
             print(f"🎉 筛选完成: 最终选出 {final_count} 篇文章")
-    
+
     def on_error(self, error: str):
         """筛选错误"""
         print(f"❌ 筛选错误: {error}")

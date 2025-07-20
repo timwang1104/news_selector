@@ -61,12 +61,25 @@ class AIClient:
     
     def evaluate_article(self, article: NewsArticle) -> AIEvaluation:
         """评估单篇文章"""
+        article_title = article.title[:50] + "..." if len(article.title) > 50 else article.title
+        logger.debug(f"开始评估文章: {article_title}")
+
         try:
+            logger.debug(f"构建评估提示词...")
             prompt = self._build_evaluation_prompt(article)
+
+            logger.debug(f"调用AI API进行评估...")
             response = self._call_ai_api(prompt)
-            return self._parse_response(response)
+
+            logger.debug(f"解析AI响应...")
+            evaluation = self._parse_response(response)
+
+            logger.info(f"文章评估完成: {article_title} - 评分: {evaluation.total_score}/30")
+            return evaluation
+
         except Exception as e:
             logger.error(f"AI evaluation failed for article {article.id}: {e}")
+            logger.warning(f"使用降级评估策略: {article_title}")
             return self._fallback_evaluation(article)
     
     def batch_evaluate(self, articles: List[NewsArticle]) -> List[AIEvaluation]:
@@ -187,23 +200,39 @@ class AIClient:
             url = "https://api.openai.com/v1/chat/completions"
         
         # 发起请求（带重试）
+        logger.debug(f"发起AI API请求到: {url}")
+        logger.debug(f"使用模型: {model_name}, 温度: {temperature}, 最大令牌: {max_tokens}")
+
         for attempt in range(self.config.retry_times):
             try:
+                logger.debug(f"API请求尝试 {attempt + 1}/{self.config.retry_times}")
+                start_time = time.time()
+
                 response = self.session.post(
                     url,
                     json=data,
                     timeout=timeout
                 )
                 response.raise_for_status()
-                
+
+                api_time = time.time() - start_time
+                logger.debug(f"API请求成功，耗时: {api_time:.2f}秒")
+
                 result = response.json()
-                return result['choices'][0]['message']['content']
-                
+                response_content = result['choices'][0]['message']['content']
+                logger.debug(f"收到AI响应，长度: {len(response_content)} 字符")
+
+                return response_content
+
             except requests.RequestException as e:
-                logger.warning(f"AI API request failed (attempt {attempt + 1}): {e}")
+                api_time = time.time() - start_time if 'start_time' in locals() else 0
+                logger.warning(f"AI API请求失败 (尝试 {attempt + 1}/{self.config.retry_times}): {e} (耗时: {api_time:.2f}秒)")
+
                 if attempt < self.config.retry_times - 1:
+                    logger.debug(f"等待 {self.config.retry_delay} 秒后重试...")
                     time.sleep(self.config.retry_delay)
                 else:
+                    logger.error(f"AI API请求在 {self.config.retry_times} 次尝试后全部失败")
                     raise AIClientError(f"AI API request failed after {self.config.retry_times} attempts: {e}")
     
     def _parse_response(self, response: str) -> AIEvaluation:

@@ -18,8 +18,8 @@ class BatchFilterDialog:
         self.dialog = None
         
         # 配置变量
-        self.max_subscriptions_var = tk.StringVar(value="10")
-        self.subscription_keywords_var = tk.StringVar(value="tech,AI,科技")
+        self.max_subscriptions_var = tk.StringVar(value="")
+
         self.articles_per_sub_var = tk.StringVar(value="20")
         self.filter_type_var = tk.StringVar(value="keyword")
         self.enable_parallel_var = tk.BooleanVar(value=True)
@@ -109,16 +109,11 @@ class BatchFilterDialog:
         """创建订阅源配置"""
         group = ttk.LabelFrame(parent, text="订阅源配置", padding="10")
         group.pack(fill=tk.X, pady=(0, 10))
-        
+
         # 最大订阅源数量
         ttk.Label(group, text="最大处理订阅源数量:").grid(row=0, column=0, sticky=tk.W, pady=(0, 5))
         ttk.Entry(group, textvariable=self.max_subscriptions_var, width=10).grid(row=0, column=1, sticky=tk.W, padx=(10, 0))
         ttk.Label(group, text="(留空表示处理所有订阅源)", foreground="gray").grid(row=0, column=2, sticky=tk.W, padx=(10, 0))
-        
-        # 订阅源关键词
-        ttk.Label(group, text="订阅源关键词过滤:").grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
-        ttk.Entry(group, textvariable=self.subscription_keywords_var, width=40).grid(row=1, column=1, columnspan=2, sticky=tk.W, padx=(10, 0), pady=(5, 0))
-        ttk.Label(group, text="(用逗号分隔多个关键词，留空表示不过滤)", foreground="gray").grid(row=2, column=1, columnspan=2, sticky=tk.W, padx=(10, 0))
     
     def create_article_config(self, parent):
         """创建文章获取配置"""
@@ -193,11 +188,7 @@ class BatchFilterDialog:
             max_subs = self.max_subscriptions_var.get().strip()
             if max_subs:
                 config.max_subscriptions = int(max_subs)
-            
-            keywords = self.subscription_keywords_var.get().strip()
-            if keywords:
-                config.subscription_keywords = [k.strip() for k in keywords.split(',') if k.strip()]
-            
+
             # 文章获取配置
             config.articles_per_subscription = int(self.articles_per_sub_var.get())
             config.exclude_read = self.exclude_read_var.get()
@@ -263,7 +254,7 @@ class BatchFilterDialog:
             if max_results and (not max_results.isdigit() or int(max_results) <= 0):
                 messagebox.showerror("输入错误", "每个订阅源最大结果数必须是正整数")
                 return False
-            
+
             return True
             
         except ValueError:
@@ -272,8 +263,8 @@ class BatchFilterDialog:
     
     def reset_config(self):
         """重置配置"""
-        self.max_subscriptions_var.set("10")
-        self.subscription_keywords_var.set("tech,AI,科技")
+        self.max_subscriptions_var.set("")
+
         self.articles_per_sub_var.set("20")
         self.filter_type_var.set("keyword")
         self.enable_parallel_var.set(True)

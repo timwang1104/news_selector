@@ -118,7 +118,14 @@ class MainWindow:
         filter_menu.add_separator()
         filter_menu.add_command(label="筛选配置", command=self.show_filter_config)
         filter_menu.add_command(label="性能指标", command=self.show_filter_metrics)
-        
+
+        # 工具菜单
+        tools_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="工具", menu=tools_menu)
+        tools_menu.add_command(label="导出Inoreader订阅源", command=self.export_inoreader_subscriptions)
+        tools_menu.add_separator()
+        tools_menu.add_command(label="RSS管理", command=self.show_rss_manager)
+
         # 帮助菜单
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="帮助", menu=help_menu)
@@ -906,6 +913,36 @@ class MainWindow:
 """
         messagebox.showinfo("关于", about_text)
 
+    def export_inoreader_subscriptions(self):
+        """导出Inoreader订阅源"""
+        if not self.auth or not self.auth.is_authenticated():
+            messagebox.showwarning("未登录", "请先登录Inoreader账户")
+            return
+
+        try:
+            from .subscription_export_dialog import SubscriptionExportDialog
+            # 传递RSS管理器的刷新回调
+            refresh_callback = None
+            if hasattr(self, 'rss_manager') and self.rss_manager:
+                refresh_callback = self.rss_manager.refresh_rss_feed_list
+
+            SubscriptionExportDialog(self.root, self.auth, refresh_callback)
+        except Exception as e:
+            messagebox.showerror("错误", f"打开导出对话框失败: {e}")
+
+    def show_rss_manager(self):
+        """显示RSS管理器"""
+        # 切换到自定义RSS标签页
+        try:
+            # 找到自定义RSS标签页的索引
+            for i in range(self.subscription_notebook.index("end")):
+                tab_text = self.subscription_notebook.tab(i, "text")
+                if "自定义RSS" in tab_text:
+                    self.subscription_notebook.select(i)
+                    break
+        except Exception as e:
+            messagebox.showerror("错误", f"切换到RSS管理器失败: {e}")
+
     def refresh_ui(self):
         """刷新整个UI"""
         # 清空订阅源列表
@@ -977,11 +1014,21 @@ class MainWindow:
     def execute_batch_filter(self, config):
         """执行批量筛选"""
         try:
-            from ..services.batch_filter_service import BatchFilterManager
             from .batch_filter_progress_dialog import BatchFilterProgressDialog
 
-            # 创建批量筛选管理器
-            manager = BatchFilterManager(self.auth)
+            # 根据当前活动的标签页选择合适的批量筛选管理器
+            current_tab = self.subscription_notebook.tab(self.subscription_notebook.select(), "text")
+
+            if current_tab == "自定义RSS":
+                # 使用自定义RSS批量筛选管理器
+                from ..services.batch_filter_service import custom_rss_batch_filter_manager
+                manager = custom_rss_batch_filter_manager
+                print("使用自定义RSS批量筛选管理器")
+            else:
+                # 使用Inoreader批量筛选管理器
+                from ..services.batch_filter_service import BatchFilterManager
+                manager = BatchFilterManager(self.auth)
+                print("使用Inoreader批量筛选管理器")
 
             # 创建进度对话框
             progress_dialog = BatchFilterProgressDialog(self.root)
@@ -1548,8 +1595,8 @@ AI筛选通过: {result.ai_filtered_count}
         rss_frame = ttk.Frame(self.subscription_notebook)
         self.subscription_notebook.add(rss_frame, text="自定义RSS")
 
-        # 创建RSS管理器，传入文章回调函数
-        self.rss_manager = RSSManager(rss_frame, self.on_rss_articles_loaded)
+        # 创建RSS管理器，传入文章回调函数和认证信息
+        self.rss_manager = RSSManager(rss_frame, self.on_rss_articles_loaded, self.auth)
 
     def on_rss_articles_loaded(self, rss_articles, source_name):
         """处理RSS文章加载事件"""

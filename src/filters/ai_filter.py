@@ -27,43 +27,49 @@ class AIFilter(BaseFilter):
         """筛选文章列表"""
         if not articles:
             return []
-        
+
         # 限制处理数量
         if len(articles) > self.config.max_requests:
             logger.warning(f"Too many articles ({len(articles)}), limiting to {self.config.max_requests}")
             articles = articles[:self.config.max_requests]
-        
+
         results = []
-        
+
         # 批量处理
         for batch in self._create_batches(articles, self.config.batch_size):
             batch_results = self._process_batch(batch)
             results.extend(batch_results)
-        
-        # 过滤低分文章
-        filtered_results = [
-            result for result in results
-            if result.evaluation.total_score >= self.config.threshold
-        ]
-        
-        # 按总分排序
-        filtered_results.sort(key=lambda x: x.evaluation.total_score, reverse=True)
-        
-        return filtered_results
+
+        # 按总分排序，取评分最高的前N条
+        results.sort(key=lambda x: x.evaluation.total_score, reverse=True)
+
+        # 取前max_selected条结果
+        max_selected = getattr(self.config, 'max_selected', 3)  # 默认3条
+        selected_results = results[:max_selected]
+
+        logger.info(f"AI筛选完成: 处理了{len(results)}篇文章，选择了前{len(selected_results)}条评分最高的文章")
+
+        return selected_results
     
     def filter_single(self, article: NewsArticle) -> Optional[AIFilterResult]:
         """筛选单篇文章"""
         start_time = time.time()
-        
+        article_title = article.title[:60] + "..." if len(article.title) > 60 else article.title
+
+        logger.debug(f"开始AI筛选: {article_title}")
+
         try:
             # 检查缓存
             cached_evaluation = None
             if self.cache:
+                logger.debug(f"检查缓存: {article_title}")
                 cached_evaluation = self.cache.get(article)
                 if cached_evaluation:
                     self.metrics.record_cache_hit()
                     processing_time = time.time() - start_time
-                    
+
+                    logger.info(f"缓存命中: {article_title} - 评分: {cached_evaluation.total_score}/30 (缓存)")
+
                     return AIFilterResult(
                         article=article,
                         evaluation=cached_evaluation,
@@ -73,17 +79,42 @@ class AIFilter(BaseFilter):
                     )
                 else:
                     self.metrics.record_cache_miss()
-            
+                    logger.debug(f"缓存未命中: {article_title}")
+
             # AI评估
+            logger.debug(f"开始AI评估: {article_title}")
             evaluation = self.client.evaluate_article(article)
-            
+
+            # 记录评估详情
+            logger.info(f"AI评估完成: {article_title}")
+            logger.info(f"  政策相关性: {evaluation.relevance_score}/10")
+            logger.info(f"  创新影响: {evaluation.innovation_impact}/10")
+            logger.info(f"  实用性: {evaluation.practicality}/10")
+            logger.info(f"  总分: {evaluation.total_score}/30")
+            logger.info(f"  置信度: {evaluation.confidence:.2f}")
+            if evaluation.reasoning:
+                logger.debug(f"  评估理由: {evaluation.reasoning[:200]}...")
+
             # 缓存结果
             if self.cache and evaluation.confidence >= self.config.min_confidence:
                 self.cache.set(article, evaluation)
-            
+                logger.debug(f"结果已缓存: {article_title}")
+
             processing_time = time.time() - start_time
             self.metrics.record_processing_time(processing_time * 1000)
-            
+
+            # 判断评估质量
+            if evaluation.total_score >= 20:
+                quality_level = "优秀"
+            elif evaluation.total_score >= 15:
+                quality_level = "良好"
+            elif evaluation.total_score >= 10:
+                quality_level = "一般"
+            else:
+                quality_level = "较差"
+
+            logger.info(f"评估质量: {quality_level} (耗时: {processing_time:.2f}秒)")
+
             result = AIFilterResult(
                 article=article,
                 evaluation=evaluation,
@@ -91,25 +122,24 @@ class AIFilter(BaseFilter):
                 ai_model=self.config.model_name,
                 cached=False
             )
-            
-            # 检查是否通过阈值
-            if evaluation.total_score >= self.config.threshold:
-                return result
-            else:
-                return None
-                
+
+            # 返回评估结果，由调用方进行排名筛选
+            return result
+
         except AIClientError as e:
             self.metrics.record_error()
-            logger.error(f"AI filtering failed for article {article.id}: {e}")
-            
+            logger.error(f"AI筛选失败: {article_title} - {e}")
+
             # 降级策略
             if self.config.fallback_enabled:
+                logger.warning(f"启用降级策略: {article_title}")
                 return self._fallback_filter(article, start_time)
             else:
+                logger.error(f"降级策略已禁用，跳过文章: {article_title}")
                 return None
         except Exception as e:
             self.metrics.record_error()
-            logger.error(f"Unexpected error in AI filtering: {e}")
+            logger.error(f"AI筛选异常: {article_title} - {e}")
             return None
     
     def _process_batch(self, articles: List[NewsArticle]) -> List[AIFilterResult]:
@@ -174,11 +204,18 @@ class AIFilter(BaseFilter):
     
     def _fallback_filter(self, article: NewsArticle, start_time: float) -> Optional[AIFilterResult]:
         """降级筛选策略"""
+        article_title = article.title[:60] + "..." if len(article.title) > 60 else article.title
+
+        logger.info(f"执行降级评估: {article_title}")
+
         # 使用简单的启发式评估
         fallback_evaluation = self.client._fallback_evaluation(article)
-        
+
         processing_time = time.time() - start_time
-        
+
+        logger.info(f"降级评估完成: {article_title} - 评分: {fallback_evaluation.total_score}/30 (降级)")
+        logger.debug(f"降级理由: {fallback_evaluation.reasoning}")
+
         return AIFilterResult(
             article=article,
             evaluation=fallback_evaluation,
