@@ -1,9 +1,11 @@
 """
 筛选功能配置管理
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from typing import Dict, List, Optional
 import os
+import json
+from pathlib import Path
 
 
 @dataclass
@@ -81,11 +83,44 @@ class FilterChainConfig:
 
 class FilterConfigManager:
     """筛选配置管理器"""
-    
-    def __init__(self):
+
+    def __init__(self, config_dir: str = "config"):
+        self.config_dir = Path(config_dir)
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+        self.config_file = self.config_dir / "filter_config.json"
         self.configs = {}
-        self.load_default_configs()
+        self.load_configs()
     
+    def load_configs(self):
+        """加载配置"""
+        # 先加载默认配置
+        self.load_default_configs()
+
+        # 然后尝试从文件加载保存的配置
+        if self.config_file.exists():
+            try:
+                with open(self.config_file, 'r', encoding='utf-8') as f:
+                    saved_configs = json.load(f)
+
+                # 更新AI配置
+                if "ai" in saved_configs:
+                    ai_data = saved_configs["ai"]
+                    self.configs["ai"] = AIFilterConfig(**ai_data)
+
+                # 更新筛选链配置
+                if "chain" in saved_configs:
+                    chain_data = saved_configs["chain"]
+                    self.configs["chain"] = FilterChainConfig(**chain_data)
+
+                # 更新关键词配置
+                if "keyword" in saved_configs:
+                    keyword_data = saved_configs["keyword"]
+                    self.configs["keyword"] = KeywordConfig(**keyword_data)
+
+                print(f"✅ 已加载筛选配置: {self.config_file}")
+            except Exception as e:
+                print(f"⚠️  加载筛选配置失败: {e}")
+
     def load_default_configs(self):
         """加载默认配置"""
         # 关键词筛选配置
@@ -97,7 +132,7 @@ class FilterConfigManager:
             max_results=150,
             min_matches=2
         )
-        
+
         # AI筛选配置
         ai_config = AIFilterConfig(
             api_key=os.getenv("OPENAI_API_KEY", ""),
@@ -105,7 +140,7 @@ class FilterConfigManager:
             threshold=20,
             max_requests=50
         )
-        
+
         # 筛选链配置
         chain_config = FilterChainConfig(
             keyword_threshold=0.65,
@@ -115,12 +150,28 @@ class FilterConfigManager:
             max_ai_requests=50,
             max_final_results=30
         )
-        
+
         self.configs = {
             "keyword": keyword_config,
             "ai": ai_config,
             "chain": chain_config
         }
+
+    def save_configs(self):
+        """保存配置到文件"""
+        try:
+            # 转换配置为字典
+            config_data = {}
+            for key, config in self.configs.items():
+                config_data[key] = asdict(config)
+
+            # 保存到文件
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, ensure_ascii=False, indent=2)
+
+            print(f"✅ 筛选配置已保存: {self.config_file}")
+        except Exception as e:
+            print(f"⚠️  保存筛选配置失败: {e}")
     
     def get_keyword_config(self) -> KeywordConfig:
         """获取关键词筛选配置"""
@@ -138,13 +189,20 @@ class FilterConfigManager:
         """更新配置参数"""
         if config_type not in self.configs:
             raise ValueError(f"Unknown config type: {config_type}")
-        
+
         config = self.configs[config_type]
         for key, value in kwargs.items():
             if hasattr(config, key):
                 setattr(config, key, value)
             else:
                 print(f"Warning: Unknown config key '{key}' for {config_type}")
+
+        # 自动保存配置
+        self.save_configs()
+
+    def reload_configs(self):
+        """重新加载配置"""
+        self.load_configs()
 
 
 # 全局配置管理器实例

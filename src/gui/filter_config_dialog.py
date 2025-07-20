@@ -517,47 +517,96 @@ class FilterConfigDialog:
     def load_current_config(self):
         """加载当前配置"""
         try:
-            # 加载关键词配置
-            keyword_config = filter_service.get_config("keyword")
-            self.config_vars['keyword_threshold'].set(keyword_config.get('threshold', 0.65))
-            self.config_vars['max_results'].set(keyword_config.get('max_results', 150))
-            self.config_vars['min_matches'].set(keyword_config.get('min_matches', 2))
-            self.config_vars['case_sensitive'].set(keyword_config.get('case_sensitive', False))
-            self.config_vars['fuzzy_match'].set(keyword_config.get('fuzzy_match', True))
-            self.config_vars['word_boundary'].set(keyword_config.get('word_boundary', True))
+            # 直接从配置文件加载
+            self.load_config_from_file()
 
-            # 先加载AI Agent配置（这会设置API相关的配置）
-            self.load_agent_config_list()
-
-            # 然后加载AI筛选配置（阈值、缓存等），但保留Agent配置的API设置
-            ai_config = filter_service.get_config("ai")
-            self.config_vars['ai_threshold'].set(ai_config.get('threshold', 20))
-            self.config_vars['max_requests'].set(ai_config.get('max_requests', 50))
-            self.config_vars['enable_cache'].set(ai_config.get('enable_cache', True))
-            self.config_vars['fallback_enabled'].set(ai_config.get('fallback_enabled', True))
-
-            # 如果没有Agent配置，则使用基本AI配置的API设置
-            if not self.current_agent_config:
-                self.config_vars['api_key'].set(ai_config.get('api_key', ''))
-                self.config_vars['model_name'].set(ai_config.get('model_name', 'gpt-3.5-turbo'))
-                self.config_vars['base_url'].set(ai_config.get('base_url', ''))
-
-            # 确保Agent配置与FilterService同步
-            self.sync_agent_config_to_filter_service()
-
-            # 加载筛选链配置
-            chain_config = filter_service.get_config("chain")
-            self.config_vars['enable_keyword_filter'].set(chain_config.get('enable_keyword_filter', True))
-            self.config_vars['enable_ai_filter'].set(chain_config.get('enable_ai_filter', True))
-            self.config_vars['final_score_threshold'].set(chain_config.get('final_score_threshold', 0.7))
-            self.config_vars['max_final_results'].set(chain_config.get('max_final_results', 30))
-            self.config_vars['sort_by'].set(chain_config.get('sort_by', 'final_score'))
+            # 加载Agent配置列表（但不覆盖API设置）
+            self.load_agent_config_list_without_overriding()
 
             # 加载关键词信息
             self.update_keyword_info()
 
         except Exception as e:
             messagebox.showerror("错误", f"加载配置失败: {e}")
+
+    def load_config_from_file(self):
+        """直接从配置文件加载配置"""
+        import json
+        from pathlib import Path
+
+        config_file = Path("config/filter_config.json")
+
+        # 默认配置
+        default_config = {
+            "keyword": {
+                "threshold": 0.65,
+                "max_results": 150,
+                "min_matches": 2,
+                "case_sensitive": False,
+                "fuzzy_match": True,
+                "word_boundary": True
+            },
+            "ai": {
+                "model_name": "gpt-3.5-turbo",
+                "api_key": "",
+                "base_url": "",
+                "threshold": 20,
+                "max_requests": 50,
+                "enable_cache": True,
+                "fallback_enabled": True
+            },
+            "chain": {
+                "enable_keyword_filter": True,
+                "enable_ai_filter": True,
+                "final_score_threshold": 0.7,
+                "max_final_results": 30,
+                "sort_by": "final_score"
+            }
+        }
+
+        # 如果配置文件存在，加载配置
+        if config_file.exists():
+            try:
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    saved_config = json.load(f)
+
+                # 合并配置（保存的配置覆盖默认配置）
+                for section in default_config:
+                    if section in saved_config:
+                        default_config[section].update(saved_config[section])
+
+                print(f"✅ 已从配置文件加载设置: {config_file}")
+            except Exception as e:
+                print(f"⚠️  读取配置文件失败，使用默认配置: {e}")
+        else:
+            print("📝 配置文件不存在，使用默认配置")
+
+        # 加载关键词配置
+        keyword_config = default_config["keyword"]
+        self.config_vars['keyword_threshold'].set(keyword_config.get('threshold', 0.65))
+        self.config_vars['max_results'].set(keyword_config.get('max_results', 150))
+        self.config_vars['min_matches'].set(keyword_config.get('min_matches', 2))
+        self.config_vars['case_sensitive'].set(keyword_config.get('case_sensitive', False))
+        self.config_vars['fuzzy_match'].set(keyword_config.get('fuzzy_match', True))
+        self.config_vars['word_boundary'].set(keyword_config.get('word_boundary', True))
+
+        # 加载AI配置
+        ai_config = default_config["ai"]
+        self.config_vars['ai_threshold'].set(ai_config.get('threshold', 20))
+        self.config_vars['max_requests'].set(ai_config.get('max_requests', 50))
+        self.config_vars['enable_cache'].set(ai_config.get('enable_cache', True))
+        self.config_vars['fallback_enabled'].set(ai_config.get('fallback_enabled', True))
+        self.config_vars['api_key'].set(ai_config.get('api_key', ''))
+        self.config_vars['model_name'].set(ai_config.get('model_name', 'gpt-3.5-turbo'))
+        self.config_vars['base_url'].set(ai_config.get('base_url', ''))
+
+        # 加载筛选链配置
+        chain_config = default_config["chain"]
+        self.config_vars['enable_keyword_filter'].set(chain_config.get('enable_keyword_filter', True))
+        self.config_vars['enable_ai_filter'].set(chain_config.get('enable_ai_filter', True))
+        self.config_vars['final_score_threshold'].set(chain_config.get('final_score_threshold', 0.7))
+        self.config_vars['max_final_results'].set(chain_config.get('max_final_results', 30))
+        self.config_vars['sort_by'].set(chain_config.get('sort_by', 'final_score'))
 
     def sync_agent_config_to_filter_service(self):
         """同步Agent配置到FilterService"""
@@ -578,46 +627,90 @@ class FilterConfigDialog:
     def save_config(self):
         """保存配置"""
         try:
-            # 保存关键词配置
-            filter_service.update_config("keyword",
-                threshold=self.config_vars['keyword_threshold'].get(),
-                max_results=self.config_vars['max_results'].get(),
-                min_matches=self.config_vars['min_matches'].get(),
-                case_sensitive=self.config_vars['case_sensitive'].get(),
-                fuzzy_match=self.config_vars['fuzzy_match'].get(),
-                word_boundary=self.config_vars['word_boundary'].get()
-            )
-            
+            # 直接保存到配置文件
+            self.save_config_to_file()
+
             # 保存AI Agent配置（如果有的话）
             if self.current_agent_config:
                 self.save_current_agent_config()
 
-            # 保存AI配置（包含Agent配置的API设置）
-            filter_service.update_config("ai",
-                api_key=self.config_vars['api_key'].get(),
-                model_name=self.config_vars['model_name'].get(),
-                base_url=self.config_vars['base_url'].get(),
-                threshold=self.config_vars['ai_threshold'].get(),
-                max_requests=self.config_vars['max_requests'].get(),
-                enable_cache=self.config_vars['enable_cache'].get(),
-                fallback_enabled=self.config_vars['fallback_enabled'].get()
-            )
-            
-            # 保存筛选链配置
-            filter_service.update_config("chain",
-                enable_keyword_filter=self.config_vars['enable_keyword_filter'].get(),
-                enable_ai_filter=self.config_vars['enable_ai_filter'].get(),
-                final_score_threshold=self.config_vars['final_score_threshold'].get(),
-                max_final_results=self.config_vars['max_final_results'].get(),
-                sort_by=self.config_vars['sort_by'].get()
-            )
-            
+            # 通知FilterService重新加载配置（保持兼容性）
+            try:
+                filter_service.reload_config()
+            except:
+                pass  # 如果reload_config方法不存在，忽略错误
+
             self.result = True
             messagebox.showinfo("成功", "配置已保存")
             self.dialog.destroy()
-            
+
         except Exception as e:
             messagebox.showerror("错误", f"保存配置失败: {e}")
+
+    def save_config_to_file(self):
+        """直接保存配置到文件"""
+        import json
+        from pathlib import Path
+
+        config_file = Path("config/filter_config.json")
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # 构建配置数据
+        config_data = {
+            "keyword": {
+                "keywords": {},
+                "weights": {},
+                "threshold": self.config_vars['keyword_threshold'].get(),
+                "max_results": self.config_vars['max_results'].get(),
+                "case_sensitive": self.config_vars['case_sensitive'].get(),
+                "fuzzy_match": self.config_vars['fuzzy_match'].get(),
+                "word_boundary": self.config_vars['word_boundary'].get(),
+                "phrase_matching": True,
+                "min_keyword_length": 2,
+                "min_matches": self.config_vars['min_matches'].get()
+            },
+            "ai": {
+                "model_name": self.config_vars['model_name'].get(),
+                "api_key": self.config_vars['api_key'].get(),
+                "base_url": self.config_vars['base_url'].get(),
+                "temperature": 0.3,
+                "max_tokens": 1000,
+                "threshold": self.config_vars['ai_threshold'].get(),
+                "max_requests": self.config_vars['max_requests'].get(),
+                "batch_size": 5,
+                "timeout": 30,
+                "retry_times": 3,
+                "retry_delay": 1,
+                "enable_cache": self.config_vars['enable_cache'].get(),
+                "cache_ttl": 3600,
+                "cache_size": 1000,
+                "fallback_enabled": self.config_vars['fallback_enabled'].get(),
+                "fallback_threshold": 0.7,
+                "min_confidence": 0.5
+            },
+            "chain": {
+                "enable_keyword_filter": self.config_vars['enable_keyword_filter'].get(),
+                "enable_ai_filter": self.config_vars['enable_ai_filter'].get(),
+                "keyword_threshold": self.config_vars['keyword_threshold'].get(),
+                "ai_threshold": self.config_vars['ai_threshold'].get(),
+                "final_score_threshold": self.config_vars['final_score_threshold'].get(),
+                "max_keyword_results": self.config_vars['max_results'].get(),
+                "max_ai_requests": self.config_vars['max_requests'].get(),
+                "max_final_results": self.config_vars['max_final_results'].get(),
+                "fail_fast": False,
+                "enable_parallel": True,
+                "batch_size": 10,
+                "sort_by": self.config_vars['sort_by'].get(),
+                "include_rejected": False,
+                "include_metrics": True
+            }
+        }
+
+        # 保存到文件
+        with open(config_file, 'w', encoding='utf-8') as f:
+            json.dump(config_data, f, ensure_ascii=False, indent=2)
+
+        print(f"✅ 配置已保存到: {config_file}")
     
     def reset_config(self):
         """重置配置"""
@@ -729,6 +822,39 @@ class FilterConfigDialog:
                     self.config_vars['current_agent_config'].set(config_list[0])
                     self.current_agent_config = first_config
                     self.load_agent_config_to_ui(first_config)
+        except Exception as e:
+            print(f"加载AI配置列表失败: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def load_agent_config_list_without_overriding(self):
+        """加载AI Agent配置列表但不覆盖API设置"""
+        try:
+            # 确保agent_config_combo存在
+            if not hasattr(self, 'agent_config_combo'):
+                print("agent_config_combo 不存在，跳过AI配置加载")
+                return
+
+            # 确保current_agent_config变量存在
+            if 'current_agent_config' not in self.config_vars:
+                self.config_vars['current_agent_config'] = tk.StringVar()
+
+            config_list = agent_config_manager.get_config_list()
+            self.agent_config_combo['values'] = config_list
+
+            # 设置当前配置但不加载到UI（避免覆盖API设置）
+            current_config = agent_config_manager.get_current_config()
+            if current_config:
+                self.config_vars['current_agent_config'].set(current_config.config_name)
+                self.current_agent_config = current_config
+                # 不调用 load_agent_config_to_ui，避免覆盖API设置
+            elif config_list:
+                # 如果没有当前配置，选择第一个但不加载到UI
+                first_config = agent_config_manager.load_config(config_list[0])
+                if first_config:
+                    self.config_vars['current_agent_config'].set(config_list[0])
+                    self.current_agent_config = first_config
+                    # 不调用 load_agent_config_to_ui，避免覆盖API设置
         except Exception as e:
             print(f"加载AI配置列表失败: {e}")
             import traceback

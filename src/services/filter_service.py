@@ -253,6 +253,14 @@ class FilterService:
             return self.config_manager.get_chain_config().__dict__
         else:
             raise ValueError(f"Unknown config type: {config_type}")
+
+    def reload_config(self):
+        """重新加载配置"""
+        self.config_manager.reload_configs()
+        # 重置筛选器以应用新配置
+        self._keyword_filter = None
+        self._ai_filter = None
+        self._filter_chain = None
     
     def get_metrics(self) -> Dict[str, Any]:
         """获取筛选性能指标"""
