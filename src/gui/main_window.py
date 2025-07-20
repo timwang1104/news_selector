@@ -17,6 +17,7 @@ from .login_dialog import LoginDialog
 from .filter_config_dialog import FilterConfigDialog
 from .filter_progress_dialog import FilterProgressDialog, FilterMetricsDialog
 from .rss_manager import RSSManager
+from .ai_analysis_dialog import AIAnalysisDialog
 
 
 class MainWindow:
@@ -39,10 +40,34 @@ class MainWindow:
         self.filter_result = None  # 筛选结果
         self.display_mode = "all"  # 显示模式: "all" 或 "filtered"
         
+        # 同步Agent配置到FilterService
+        self.sync_agent_config_on_startup()
+
         # 创建界面
         self.create_widgets()
         self.update_login_status()
-    
+
+    def sync_agent_config_on_startup(self):
+        """应用启动时同步Agent配置到FilterService"""
+        try:
+            from src.config.agent_config import agent_config_manager
+            from src.services.filter_service import filter_service
+
+            # 获取当前Agent配置
+            current_config = agent_config_manager.get_current_config()
+            if current_config and current_config.api_config:
+                # 同步API配置到FilterService
+                filter_service.update_config("ai",
+                    api_key=current_config.api_config.api_key,
+                    model_name=current_config.api_config.model_name,
+                    base_url=current_config.api_config.base_url
+                )
+                print(f"✅ 启动时已同步Agent配置 '{current_config.config_name}' 到FilterService")
+            else:
+                print("⚠️  启动时没有找到有效的Agent配置")
+        except Exception as e:
+            print(f"❌ 启动时同步Agent配置失败: {e}")
+
     def create_widgets(self):
         """创建界面组件"""
         # 创建菜单栏
@@ -678,6 +703,40 @@ class MainWindow:
         else:
             messagebox.showwarning("警告", "没有可用的文章链接")
 
+    def view_ai_analysis(self):
+        """查看AI分析详情"""
+        selection = self.article_tree.selection()
+        if not selection:
+            messagebox.showwarning("警告", "请先选择一篇文章")
+            return
+
+        # 获取选中的文章索引
+        item_index = self.article_tree.index(selection[0])
+
+        # 检查是否有筛选结果和AI分析数据
+        if not self.filter_result or not self.filter_result.selected_articles:
+            messagebox.showwarning("警告", "没有可用的AI分析数据，请先进行智能筛选")
+            return
+
+        if item_index >= len(self.filter_result.selected_articles):
+            messagebox.showwarning("警告", "无法找到对应的AI分析数据")
+            return
+
+        # 获取对应的筛选结果
+        combined_result = self.filter_result.selected_articles[item_index]
+
+        # 检查是否有AI分析结果
+        if not combined_result.ai_result or not combined_result.ai_result.evaluation:
+            messagebox.showwarning("警告", "该文章没有AI分析数据")
+            return
+
+        # 显示AI分析对话框
+        try:
+            dialog = AIAnalysisDialog(self.root, combined_result)
+            dialog.show()
+        except Exception as e:
+            messagebox.showerror("错误", f"显示AI分析失败: {e}")
+
     def toggle_star(self):
         """切换星标状态"""
         if not self.current_article:
@@ -873,6 +932,29 @@ class MainWindow:
         filter_type = self.filter_type_var.get()
         self.quick_filter(filter_type)
 
+    def get_displayed_articles(self):
+        """获取当前显示的文章列表"""
+        filter_type = self.filter_var.get()
+
+        # 如果当前显示的是筛选结果
+        if filter_type == "filtered" and self.filtered_articles:
+            print(f"📋 获取显示文章: 筛选结果 ({len(self.filtered_articles)} 篇)")
+            return [result.article if hasattr(result, 'article') else result for result in self.filtered_articles]
+
+        # 否则根据过滤条件从current_articles中筛选
+        displayed_articles = []
+        for article in self.current_articles:
+            # 应用过滤条件
+            if filter_type == "unread" and article.is_read:
+                continue
+            elif filter_type == "starred" and not article.is_starred:
+                continue
+
+            displayed_articles.append(article)
+
+        print(f"📋 获取显示文章: {filter_type} ({len(displayed_articles)} 篇)")
+        return displayed_articles
+
     def batch_filter_articles(self):
         """批量筛选文章"""
         try:
@@ -1006,9 +1088,12 @@ class MainWindow:
 
     def quick_filter(self, filter_type: str):
         """快速筛选文章"""
+        # 获取当前显示的文章列表
+        displayed_articles = self.get_displayed_articles()
+
         # 检查是否有文章
-        if not self.current_articles:
-            messagebox.showinfo("提示", "请先加载文章")
+        if not displayed_articles:
+            messagebox.showinfo("提示", "当前没有可筛选的文章")
             return
 
         # 更新筛选类型选择器
@@ -1022,12 +1107,29 @@ class MainWindow:
         }
 
         description = filter_descriptions.get(filter_type, "")
-        self.update_status(f"开始{filter_type}筛选: {description}")
+
+        # 获取当前显示模式的描述
+        current_filter = self.filter_var.get()
+        filter_mode_descriptions = {
+            "all": "全部文章",
+            "unread": "未读文章",
+            "starred": "星标文章",
+            "filtered": "已筛选文章"
+        }
+        current_mode_desc = filter_mode_descriptions.get(current_filter, "当前显示的文章")
+
+        # 显示确认对话框（仅对AI筛选，因为消耗资源）
+        if filter_type == "ai":
+            confirm_msg = f"将对{current_mode_desc}中的 {len(displayed_articles)} 篇文章进行AI筛选。\n\n{description}\n\n是否继续？"
+            if not messagebox.askyesno("确认AI筛选", confirm_msg):
+                return
+
+        self.update_status(f"开始{filter_type}筛选: 从{current_mode_desc}({len(displayed_articles)}篇)中筛选")
 
         # 显示进度对话框并执行筛选
         progress_dialog = FilterProgressDialog(
             self.root,
-            self.current_articles,
+            displayed_articles,  # 使用当前显示的文章列表
             filter_type
         )
 

@@ -104,29 +104,32 @@ class FilterConfigDialog:
         
         # 筛选阈值
         ttk.Label(basic_frame, text="筛选阈值 (0.0-1.0):").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
-        self.config_vars['keyword_threshold'] = tk.DoubleVar()
-        threshold_scale = ttk.Scale(basic_frame, from_=0.0, to=1.0, 
+        if 'keyword_threshold' not in self.config_vars:
+            self.config_vars['keyword_threshold'] = tk.DoubleVar()
+        threshold_scale = ttk.Scale(basic_frame, from_=0.0, to=1.0,
                                   variable=self.config_vars['keyword_threshold'],
                                   orient=tk.HORIZONTAL, length=200)
         threshold_scale.grid(row=0, column=1, padx=5, pady=5)
-        
+
         threshold_label = ttk.Label(basic_frame, text="0.65")
         threshold_label.grid(row=0, column=2, padx=5, pady=5)
-        
+
         # 更新标签显示
         def update_threshold_label(*args):
             threshold_label.config(text=f"{self.config_vars['keyword_threshold'].get():.2f}")
         self.config_vars['keyword_threshold'].trace('w', update_threshold_label)
-        
+
         # 最大结果数
         ttk.Label(basic_frame, text="最大结果数:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
-        self.config_vars['max_results'] = tk.IntVar()
+        if 'max_results' not in self.config_vars:
+            self.config_vars['max_results'] = tk.IntVar()
         ttk.Spinbox(basic_frame, from_=10, to=500, textvariable=self.config_vars['max_results'],
                    width=10).grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
-        
+
         # 最少匹配关键词数
         ttk.Label(basic_frame, text="最少匹配关键词数:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
-        self.config_vars['min_matches'] = tk.IntVar()
+        if 'min_matches' not in self.config_vars:
+            self.config_vars['min_matches'] = tk.IntVar()
         ttk.Spinbox(basic_frame, from_=1, to=10, textvariable=self.config_vars['min_matches'],
                    width=10).grid(row=2, column=1, sticky=tk.W, padx=5, pady=5)
         
@@ -135,17 +138,20 @@ class FilterConfigDialog:
         advanced_frame.pack(fill=tk.X, pady=(0, 10))
         
         # 大小写敏感
-        self.config_vars['case_sensitive'] = tk.BooleanVar()
-        ttk.Checkbutton(advanced_frame, text="大小写敏感", 
+        if 'case_sensitive' not in self.config_vars:
+            self.config_vars['case_sensitive'] = tk.BooleanVar()
+        ttk.Checkbutton(advanced_frame, text="大小写敏感",
                        variable=self.config_vars['case_sensitive']).pack(anchor=tk.W, padx=5, pady=2)
-        
+
         # 模糊匹配
-        self.config_vars['fuzzy_match'] = tk.BooleanVar()
-        ttk.Checkbutton(advanced_frame, text="启用模糊匹配", 
+        if 'fuzzy_match' not in self.config_vars:
+            self.config_vars['fuzzy_match'] = tk.BooleanVar()
+        ttk.Checkbutton(advanced_frame, text="启用模糊匹配",
                        variable=self.config_vars['fuzzy_match']).pack(anchor=tk.W, padx=5, pady=2)
-        
+
         # 单词边界检查
-        self.config_vars['word_boundary'] = tk.BooleanVar()
+        if 'word_boundary' not in self.config_vars:
+            self.config_vars['word_boundary'] = tk.BooleanVar()
         ttk.Checkbutton(advanced_frame, text="单词边界检查",
                        variable=self.config_vars['word_boundary']).pack(anchor=tk.W, padx=5, pady=2)
 
@@ -219,7 +225,8 @@ class FilterConfigDialog:
 
         # 配置选择
         ttk.Label(config_frame, text="当前配置:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
-        self.config_vars['current_agent_config'] = tk.StringVar()
+        if 'current_agent_config' not in self.config_vars:
+            self.config_vars['current_agent_config'] = tk.StringVar()
         self.agent_config_combo = ttk.Combobox(config_frame, textvariable=self.config_vars['current_agent_config'],
                                               width=25, state="readonly")
         self.agent_config_combo.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W+tk.E)
@@ -246,7 +253,8 @@ class FilterConfigDialog:
 
         # 服务提供商
         ttk.Label(ai_frame, text="服务提供商:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
-        self.config_vars['provider'] = tk.StringVar()
+        if 'provider' not in self.config_vars:
+            self.config_vars['provider'] = tk.StringVar()
         provider_combo = ttk.Combobox(ai_frame, textvariable=self.config_vars['provider'],
                                      values=["openai", "siliconflow", "volcengine", "custom"],
                                      width=18, state="readonly")
@@ -255,20 +263,23 @@ class FilterConfigDialog:
 
         # API Key
         ttk.Label(ai_frame, text="API Key:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
-        self.config_vars['api_key'] = tk.StringVar()
+        if 'api_key' not in self.config_vars:
+            self.config_vars['api_key'] = tk.StringVar()
         api_key_entry = ttk.Entry(ai_frame, textvariable=self.config_vars['api_key'],
                                  width=35, show="*")
         api_key_entry.grid(row=1, column=1, columnspan=2, sticky=tk.W+tk.E, padx=5, pady=5)
 
         # Base URL
         ttk.Label(ai_frame, text="Base URL:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
-        self.config_vars['base_url'] = tk.StringVar()
+        if 'base_url' not in self.config_vars:
+            self.config_vars['base_url'] = tk.StringVar()
         ttk.Entry(ai_frame, textvariable=self.config_vars['base_url'], width=35).grid(
             row=2, column=1, columnspan=2, sticky=tk.W+tk.E, padx=5, pady=5)
 
         # 模型名称
         ttk.Label(ai_frame, text="模型名称:").grid(row=3, column=0, sticky=tk.W, padx=5, pady=5)
-        self.config_vars['model_name'] = tk.StringVar()
+        if 'model_name' not in self.config_vars:
+            self.config_vars['model_name'] = tk.StringVar()
         self.model_combo = ttk.Combobox(ai_frame, textvariable=self.config_vars['model_name'], width=28)
         self.model_combo.grid(row=3, column=1, sticky=tk.W+tk.E, padx=5, pady=5)
 
@@ -285,13 +296,15 @@ class FilterConfigDialog:
 
         # AI阈值
         ttk.Label(filter_frame, text="AI评分阈值 (0-30):").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
-        self.config_vars['ai_threshold'] = tk.IntVar()
+        if 'ai_threshold' not in self.config_vars:
+            self.config_vars['ai_threshold'] = tk.IntVar()
         ttk.Spinbox(filter_frame, from_=0, to=30, textvariable=self.config_vars['ai_threshold'],
                    width=10).grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
 
         # 最大请求数
         ttk.Label(filter_frame, text="最大请求数:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
-        self.config_vars['max_requests'] = tk.IntVar()
+        if 'max_requests' not in self.config_vars:
+            self.config_vars['max_requests'] = tk.IntVar()
         ttk.Spinbox(filter_frame, from_=1, to=200, textvariable=self.config_vars['max_requests'],
                    width=10).grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
 
@@ -302,36 +315,42 @@ class FilterConfigDialog:
 
         # Temperature
         ttk.Label(advanced_frame, text="Temperature (0.0-2.0):").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
-        self.config_vars['temperature'] = tk.DoubleVar()
+        if 'temperature' not in self.config_vars:
+            self.config_vars['temperature'] = tk.DoubleVar()
         ttk.Spinbox(advanced_frame, from_=0.0, to=2.0, increment=0.1,
                    textvariable=self.config_vars['temperature'], width=10).grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
 
         # Max Tokens
         ttk.Label(advanced_frame, text="Max Tokens:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
-        self.config_vars['max_tokens'] = tk.IntVar()
+        if 'max_tokens' not in self.config_vars:
+            self.config_vars['max_tokens'] = tk.IntVar()
         ttk.Spinbox(advanced_frame, from_=100, to=4000, textvariable=self.config_vars['max_tokens'],
                    width=10).grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
 
         # Timeout
         ttk.Label(advanced_frame, text="超时时间(秒):").grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
-        self.config_vars['timeout'] = tk.IntVar()
+        if 'timeout' not in self.config_vars:
+            self.config_vars['timeout'] = tk.IntVar()
         ttk.Spinbox(advanced_frame, from_=10, to=120, textvariable=self.config_vars['timeout'],
                    width=10).grid(row=2, column=1, sticky=tk.W, padx=5, pady=5)
 
         # Retry Times
         ttk.Label(advanced_frame, text="重试次数:").grid(row=3, column=0, sticky=tk.W, padx=5, pady=5)
-        self.config_vars['retry_times'] = tk.IntVar()
+        if 'retry_times' not in self.config_vars:
+            self.config_vars['retry_times'] = tk.IntVar()
         ttk.Spinbox(advanced_frame, from_=0, to=5, textvariable=self.config_vars['retry_times'],
                    width=10).grid(row=3, column=1, sticky=tk.W, padx=5, pady=5)
 
         # Proxy
         ttk.Label(advanced_frame, text="代理设置:").grid(row=4, column=0, sticky=tk.W, padx=5, pady=5)
-        self.config_vars['proxy'] = tk.StringVar()
+        if 'proxy' not in self.config_vars:
+            self.config_vars['proxy'] = tk.StringVar()
         ttk.Entry(advanced_frame, textvariable=self.config_vars['proxy'], width=28).grid(
             row=4, column=1, columnspan=2, sticky=tk.W+tk.E, padx=5, pady=5)
 
         # SSL验证
-        self.config_vars['verify_ssl'] = tk.BooleanVar()
+        if 'verify_ssl' not in self.config_vars:
+            self.config_vars['verify_ssl'] = tk.BooleanVar()
         ttk.Checkbutton(advanced_frame, text="启用SSL验证",
                        variable=self.config_vars['verify_ssl']).grid(row=5, column=0, columnspan=2, sticky=tk.W, padx=5, pady=5)
 
@@ -344,12 +363,14 @@ class FilterConfigDialog:
         perf_frame.pack(fill=tk.X, padx=5)
 
         # 启用缓存
-        self.config_vars['enable_cache'] = tk.BooleanVar()
+        if 'enable_cache' not in self.config_vars:
+            self.config_vars['enable_cache'] = tk.BooleanVar()
         ttk.Checkbutton(perf_frame, text="启用缓存",
                        variable=self.config_vars['enable_cache']).pack(anchor=tk.W, padx=5, pady=2)
 
         # 启用降级策略
-        self.config_vars['fallback_enabled'] = tk.BooleanVar()
+        if 'fallback_enabled' not in self.config_vars:
+            self.config_vars['fallback_enabled'] = tk.BooleanVar()
         ttk.Checkbutton(perf_frame, text="启用降级策略",
                        variable=self.config_vars['fallback_enabled']).pack(anchor=tk.W, padx=5, pady=2)
 
@@ -447,13 +468,15 @@ class FilterConfigDialog:
         flow_frame.pack(fill=tk.X, pady=(0, 10))
         
         # 启用关键词筛选
-        self.config_vars['enable_keyword_filter'] = tk.BooleanVar()
-        ttk.Checkbutton(flow_frame, text="启用关键词筛选", 
+        if 'enable_keyword_filter' not in self.config_vars:
+            self.config_vars['enable_keyword_filter'] = tk.BooleanVar()
+        ttk.Checkbutton(flow_frame, text="启用关键词筛选",
                        variable=self.config_vars['enable_keyword_filter']).pack(anchor=tk.W, padx=5, pady=2)
-        
+
         # 启用AI筛选
-        self.config_vars['enable_ai_filter'] = tk.BooleanVar()
-        ttk.Checkbutton(flow_frame, text="启用AI筛选", 
+        if 'enable_ai_filter' not in self.config_vars:
+            self.config_vars['enable_ai_filter'] = tk.BooleanVar()
+        ttk.Checkbutton(flow_frame, text="启用AI筛选",
                        variable=self.config_vars['enable_ai_filter']).pack(anchor=tk.W, padx=5, pady=2)
         
         # 结果设置
@@ -462,28 +485,31 @@ class FilterConfigDialog:
         
         # 最终分数阈值
         ttk.Label(result_frame, text="最终分数阈值 (0.0-1.0):").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
-        self.config_vars['final_score_threshold'] = tk.DoubleVar()
-        final_scale = ttk.Scale(result_frame, from_=0.0, to=1.0, 
+        if 'final_score_threshold' not in self.config_vars:
+            self.config_vars['final_score_threshold'] = tk.DoubleVar()
+        final_scale = ttk.Scale(result_frame, from_=0.0, to=1.0,
                               variable=self.config_vars['final_score_threshold'],
                               orient=tk.HORIZONTAL, length=200)
         final_scale.grid(row=0, column=1, padx=5, pady=5)
-        
+
         final_label = ttk.Label(result_frame, text="0.70")
         final_label.grid(row=0, column=2, padx=5, pady=5)
-        
+
         def update_final_label(*args):
             final_label.config(text=f"{self.config_vars['final_score_threshold'].get():.2f}")
         self.config_vars['final_score_threshold'].trace('w', update_final_label)
-        
+
         # 最大最终结果数
         ttk.Label(result_frame, text="最大最终结果数:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
-        self.config_vars['max_final_results'] = tk.IntVar()
+        if 'max_final_results' not in self.config_vars:
+            self.config_vars['max_final_results'] = tk.IntVar()
         ttk.Spinbox(result_frame, from_=1, to=100, textvariable=self.config_vars['max_final_results'],
                    width=10).grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
-        
+
         # 排序方式
         ttk.Label(result_frame, text="排序方式:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
-        self.config_vars['sort_by'] = tk.StringVar()
+        if 'sort_by' not in self.config_vars:
+            self.config_vars['sort_by'] = tk.StringVar()
         sort_combo = ttk.Combobox(result_frame, textvariable=self.config_vars['sort_by'],
                                  values=["final_score", "relevance", "timestamp"], width=15)
         sort_combo.grid(row=2, column=1, sticky=tk.W, padx=5, pady=5)
@@ -499,17 +525,26 @@ class FilterConfigDialog:
             self.config_vars['case_sensitive'].set(keyword_config.get('case_sensitive', False))
             self.config_vars['fuzzy_match'].set(keyword_config.get('fuzzy_match', True))
             self.config_vars['word_boundary'].set(keyword_config.get('word_boundary', True))
-            
-            # 加载AI配置
+
+            # 先加载AI Agent配置（这会设置API相关的配置）
+            self.load_agent_config_list()
+
+            # 然后加载AI筛选配置（阈值、缓存等），但保留Agent配置的API设置
             ai_config = filter_service.get_config("ai")
-            self.config_vars['api_key'].set(ai_config.get('api_key', ''))
-            self.config_vars['model_name'].set(ai_config.get('model_name', 'gpt-3.5-turbo'))
-            self.config_vars['base_url'].set(ai_config.get('base_url', ''))
             self.config_vars['ai_threshold'].set(ai_config.get('threshold', 20))
             self.config_vars['max_requests'].set(ai_config.get('max_requests', 50))
             self.config_vars['enable_cache'].set(ai_config.get('enable_cache', True))
             self.config_vars['fallback_enabled'].set(ai_config.get('fallback_enabled', True))
-            
+
+            # 如果没有Agent配置，则使用基本AI配置的API设置
+            if not self.current_agent_config:
+                self.config_vars['api_key'].set(ai_config.get('api_key', ''))
+                self.config_vars['model_name'].set(ai_config.get('model_name', 'gpt-3.5-turbo'))
+                self.config_vars['base_url'].set(ai_config.get('base_url', ''))
+
+            # 确保Agent配置与FilterService同步
+            self.sync_agent_config_to_filter_service()
+
             # 加载筛选链配置
             chain_config = filter_service.get_config("chain")
             self.config_vars['enable_keyword_filter'].set(chain_config.get('enable_keyword_filter', True))
@@ -521,12 +556,25 @@ class FilterConfigDialog:
             # 加载关键词信息
             self.update_keyword_info()
 
-            # 加载AI Agent配置
-            self.load_agent_config_list()
-
         except Exception as e:
             messagebox.showerror("错误", f"加载配置失败: {e}")
-    
+
+    def sync_agent_config_to_filter_service(self):
+        """同步Agent配置到FilterService"""
+        if not self.current_agent_config:
+            return
+
+        try:
+            # 同步API配置到FilterService
+            filter_service.update_config("ai",
+                api_key=self.current_agent_config.api_config.api_key,
+                model_name=self.current_agent_config.api_config.model_name,
+                base_url=self.current_agent_config.api_config.base_url
+            )
+            print(f"✅ 已同步Agent配置 '{self.current_agent_config.config_name}' 到FilterService")
+        except Exception as e:
+            print(f"❌ 同步Agent配置失败: {e}")
+
     def save_config(self):
         """保存配置"""
         try:
@@ -540,7 +588,11 @@ class FilterConfigDialog:
                 word_boundary=self.config_vars['word_boundary'].get()
             )
             
-            # 保存AI配置
+            # 保存AI Agent配置（如果有的话）
+            if self.current_agent_config:
+                self.save_current_agent_config()
+
+            # 保存AI配置（包含Agent配置的API设置）
             filter_service.update_config("ai",
                 api_key=self.config_vars['api_key'].get(),
                 model_name=self.config_vars['model_name'].get(),
@@ -550,10 +602,6 @@ class FilterConfigDialog:
                 enable_cache=self.config_vars['enable_cache'].get(),
                 fallback_enabled=self.config_vars['fallback_enabled'].get()
             )
-
-            # 保存AI Agent配置
-            if self.current_agent_config:
-                self.save_current_agent_config()
             
             # 保存筛选链配置
             filter_service.update_config("chain",
@@ -695,6 +743,10 @@ class FilterConfigDialog:
                 if config:
                     self.current_agent_config = config
                     self.load_agent_config_to_ui(config)
+                    # 设置为当前配置（这会自动保存到文件）
+                    agent_config_manager.set_current_config(config_name)
+                    # 同步配置到FilterService
+                    self.sync_agent_config_to_filter_service()
             except Exception as e:
                 messagebox.showerror("错误", f"加载配置失败: {e}")
 

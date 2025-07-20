@@ -1,13 +1,13 @@
 {
   "config_name": "默认配置",
   "created_at": "2025-07-19T07:44:26.132759",
-  "updated_at": "2025-07-19T07:44:26.132777",
+  "updated_at": "2025-07-20T15:57:49.635068",
   "api_config": {
     "name": "OpenAI GPT",
     "description": "OpenAI官方API配置",
-    "api_key": "sk-tljubtynfvjndrncuxpudcaueuomrbwtlpcefdagfuuzxzgz",
-    "base_url": "https://api.siliconflow.cn/v1",
-    "model_name": "moonshotai/Kimi-K2-Instruct",
+    "api_key": "a6bd2308-d597-415c-87f2-a510f17992f8",
+    "base_url": "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
+    "model_name": "ep-20250719230040-dnrsb",
     "temperature": 0.3,
     "max_tokens": 1000,
     "timeout": 30,
@@ -16,7 +16,7 @@
     "headers": {},
     "proxy": "",
     "verify_ssl": true,
-    "provider": "siliconflow"
+    "provider": "volcengine"
   },
   "prompt_config": {
     "name": "科技政策评估",

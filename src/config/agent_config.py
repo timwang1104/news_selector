@@ -113,10 +113,11 @@ class AgentConfig:
 
 class AgentConfigManager:
     """Agent配置管理器"""
-    
+
     def __init__(self, config_dir: str = "config/agents"):
         self.config_dir = Path(config_dir)
         self.config_dir.mkdir(parents=True, exist_ok=True)
+        self.current_config_file = self.config_dir / "current_config.json"
         self.configs: Dict[str, AgentConfig] = {}
         self.current_config_name: Optional[str] = None
         self.load_all_configs()
@@ -125,6 +126,10 @@ class AgentConfigManager:
         """加载所有配置"""
         # 加载保存的配置
         for config_file in self.config_dir.glob("*.json"):
+            # 跳过当前配置文件
+            if config_file.name == "current_config.json":
+                continue
+
             try:
                 with open(config_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
@@ -132,13 +137,16 @@ class AgentConfigManager:
                     self.configs[config.config_name] = config
             except Exception as e:
                 print(f"加载配置文件 {config_file} 失败: {e}")
-        
+
         # 如果没有配置，创建默认配置
         if not self.configs:
             self.create_default_config()
-        
+
+        # 加载当前配置名称
+        self.load_current_config_name()
+
         # 设置当前配置
-        if not self.current_config_name:
+        if not self.current_config_name or self.current_config_name not in self.configs:
             # 优先使用标记为默认的配置
             default_configs = [name for name, config in self.configs.items() if config.is_default]
             if default_configs:
@@ -146,6 +154,11 @@ class AgentConfigManager:
             else:
                 # 否则使用第一个配置
                 self.current_config_name = list(self.configs.keys())[0]
+            # 保存当前配置名称
+            self.save_current_config_name()
+
+        # 初始化时自动同步到FilterService
+        self._sync_to_filter_service()
     
     def create_default_config(self):
         """创建默认配置"""
@@ -483,8 +496,55 @@ class AgentConfigManager:
         """设置当前配置"""
         if config_name in self.configs:
             self.current_config_name = config_name
+            # 保存当前配置名称到文件
+            self.save_current_config_name()
+            # 自动同步到FilterService
+            self._sync_to_filter_service()
         else:
             raise ValueError(f"配置 '{config_name}' 不存在")
+
+    def _sync_to_filter_service(self):
+        """同步当前配置到FilterService"""
+        try:
+            current_config = self.get_current_config()
+            if current_config and current_config.api_config:
+                # 延迟导入避免循环依赖
+                from ..services.filter_service import filter_service
+
+                filter_service.update_config("ai",
+                    api_key=current_config.api_config.api_key,
+                    model_name=current_config.api_config.model_name,
+                    base_url=current_config.api_config.base_url
+                )
+                print(f"✅ 已自动同步Agent配置 '{current_config.config_name}' 到FilterService")
+        except Exception as e:
+            print(f"⚠️  自动同步Agent配置失败: {e}")
+
+    def save_current_config_name(self):
+        """保存当前配置名称到文件"""
+        try:
+            from datetime import datetime
+            current_data = {
+                "current_config_name": self.current_config_name,
+                "updated_at": datetime.now().isoformat()
+            }
+            with open(self.current_config_file, 'w', encoding='utf-8') as f:
+                json.dump(current_data, f, ensure_ascii=False, indent=2)
+            print(f"✅ 已保存当前配置名称: {self.current_config_name}")
+        except Exception as e:
+            print(f"⚠️  保存当前配置名称失败: {e}")
+
+    def load_current_config_name(self):
+        """从文件加载当前配置名称"""
+        try:
+            if self.current_config_file.exists():
+                with open(self.current_config_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self.current_config_name = data.get("current_config_name")
+                    print(f"✅ 已加载当前配置名称: {self.current_config_name}")
+        except Exception as e:
+            print(f"⚠️  加载当前配置名称失败: {e}")
+            self.current_config_name = None
     
     def create_config(self, config: AgentConfig) -> str:
         """创建新配置"""
@@ -516,21 +576,23 @@ class AgentConfigManager:
         """删除配置"""
         if config_name not in self.configs:
             raise ValueError(f"配置 '{config_name}' 不存在")
-        
+
         # 删除文件
         config_file = self.config_dir / f"{config_name}.json"
         if config_file.exists():
             config_file.unlink()
-        
+
         # 从内存中删除
         del self.configs[config_name]
-        
+
         # 如果删除的是当前配置，切换到其他配置
         if self.current_config_name == config_name:
             if self.configs:
                 self.current_config_name = list(self.configs.keys())[0]
             else:
                 self.current_config_name = None
+            # 保存新的当前配置名称
+            self.save_current_config_name()
     
     def get_config_list(self) -> List[str]:
         """获取所有配置名称列表"""

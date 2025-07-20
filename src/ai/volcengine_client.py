@@ -56,20 +56,25 @@ class VolcengineClient:
             api_key = self.config.api_key
             timeout = self.config.timeout
 
+        # 检查API密钥
+        if not api_key:
+            logger.warning("No API key provided for Volcengine client. Will use fallback mode.")
+            return None
+
         # 设置环境变量（SDK会自动读取）
-        if api_key:
-            os.environ['ARK_API_KEY'] = api_key
+        os.environ['ARK_API_KEY'] = api_key
 
         # 创建Ark客户端
         try:
             client = Ark(
-                api_key=api_key if api_key else None,
+                api_key=api_key,
                 timeout=httpx.Timeout(timeout=timeout)
             )
             return client
         except Exception as e:
             logger.error(f"Failed to create Ark client: {e}")
-            raise AIClientError(f"Failed to initialize Volcengine Ark client: {e}")
+            logger.warning("Will use fallback mode due to client initialization failure")
+            return None
 
     def evaluate_article(self, article: NewsArticle) -> AIEvaluation:
         """评估单篇文章"""
@@ -94,6 +99,10 @@ class VolcengineClient:
 
     def _call_volcengine_api(self, prompt: str) -> str:
         """调用火山引擎API，使用官方SDK"""
+        # 检查客户端是否可用
+        if not self.client:
+            raise AIClientError("Volcengine client not available. Please check API key configuration.")
+
         # 获取配置
         if self.agent_config and self.agent_config.api_config:
             api_config = self.agent_config.api_config
