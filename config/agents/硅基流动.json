@@ -6,7 +6,7 @@
     "name": "硅基流动平台",
     "description": "硅基流动平台多模型服务，支持Qwen、Kimi、DeepSeek等模型",
     "api_key": "sk-tljubtynfvjndrncuxpudcaueuomrbwtlpcefdagfuuzxzgz",
-    "base_url": " https://api.siliconflow.cn/v1/chat/completions",
+    "base_url": "https://api.siliconflow.cn/v1",
     "model_name": "moonshotai/Kimi-K2-Instruct",
     "temperature": 0.3,
     "max_tokens": 1500,

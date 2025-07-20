@@ -33,7 +33,7 @@ class AgentAPIConfig:
     verify_ssl: bool = True
 
     # 服务提供商标识
-    provider: str = "openai"  # openai, siliconflow, anthropic, custom
+    provider: str = "openai"  # openai, siliconflow, anthropic, volcengine, custom
     
     def __post_init__(self):
         if self.headers is None:
@@ -218,6 +218,9 @@ class AgentConfigManager:
         # 创建硅基流动预设配置
         self.create_siliconflow_preset()
 
+        # 创建火山引擎预设配置
+        self.create_volcengine_preset()
+
     def create_siliconflow_preset(self):
         """创建硅基流动预设配置"""
         # 检查是否已存在硅基流动配置
@@ -325,6 +328,131 @@ class AgentConfigManager:
         self.configs["硅基流动"] = siliconflow_config
         self.save_config("硅基流动")
 
+    def create_volcengine_preset(self):
+        """创建火山引擎预设配置"""
+        # 检查是否已存在火山引擎配置
+        if any("火山引擎" in name for name in self.configs.keys()):
+            return
+
+        # 从环境变量加载API Key
+        volcengine_api_key = os.getenv("VOLCENGINE_API_KEY", "")
+
+        api_config = AgentAPIConfig(
+            name="火山引擎平台",
+            description="火山引擎豆包大模型服务，支持Doubao等模型",
+            api_key=volcengine_api_key,
+            base_url="https://ark.cn-beijing.volces.com/api/v3",
+            model_name="ep-20241219105016-8xqzm",  # 使用endpoint ID格式
+            temperature=0.3,
+            max_tokens=2000,
+            timeout=90,
+            provider="volcengine",
+            headers={
+                "Content-Type": "application/json"
+            }
+        )
+
+        # 针对火山引擎优化的提示词
+        volcengine_evaluation_prompt = """
+你是上海市科委的专业顾问，请评估以下科技新闻文章对上海科技发展的相关性和价值。
+
+文章信息：
+标题：{title}
+摘要：{summary}
+内容预览：{content_preview}
+
+请从以下三个维度进行评估（每个维度0-10分）：
+
+1. 政策相关性 (0-10分)
+   - 与上海科技政策的相关程度
+   - 对政策制定和执行的参考价值
+   - 涉及的政策领域和重点方向
+
+2. 创新影响 (0-10分)
+   - 对科技创新的推动作用
+   - 技术前沿性和突破性
+   - 产业发展的促进效果
+
+3. 实用性 (0-10分)
+   - 可操作性和可实施性
+   - 对实际工作的指导意义
+   - 短期内的应用价值
+
+请严格按照以下JSON格式返回评估结果，不要包含其他内容：
+{{
+    "relevance_score": <政策相关性分数>,
+    "innovation_impact": <创新影响分数>,
+    "practicality": <实用性分数>,
+    "total_score": <总分>,
+    "reasoning": "<详细评估理由，包含各维度的具体分析>",
+    "confidence": <置信度，0-1之间的小数>
+}}
+
+注意：
+- 总分为三个维度分数之和
+- 评估理由要具体明确，说明评分依据
+- 置信度反映评估的确定程度
+- 请确保返回的是有效的JSON格式
+"""
+
+        volcengine_batch_evaluation_prompt = """
+你是上海市科委的专业顾问，请批量评估以下文章对上海科技发展的相关性和价值。
+
+文章列表：
+{articles_info}
+
+请对每篇文章进行评估，返回JSON数组格式的结果。
+评估维度和格式要求与单篇评估相同。
+
+请严格按照以下JSON数组格式返回结果，不要包含其他内容：
+[
+    {{
+        "article_index": 0,
+        "relevance_score": <分数>,
+        "innovation_impact": <分数>,
+        "practicality": <分数>,
+        "total_score": <总分>,
+        "reasoning": "<评估理由>",
+        "confidence": <置信度>
+    }},
+    ...
+]
+
+注意：请确保返回的是有效的JSON数组格式，不要包含markdown代码块标记。
+"""
+
+        prompt_config = AgentPromptConfig(
+            name="火山引擎科技政策评估",
+            description="适用于火山引擎豆包模型的科技政策评估提示词",
+            version="1.0",
+            system_prompt="你是上海市科委的专业顾问，具有深厚的科技政策背景和丰富的行业经验。请严格按照要求的JSON格式返回结果。",
+            evaluation_prompt=volcengine_evaluation_prompt,
+            batch_evaluation_prompt=volcengine_batch_evaluation_prompt,
+            dimensions=[
+                {"name": "政策相关性", "description": "与科技政策的相关程度", "weight": 1.0},
+                {"name": "创新影响", "description": "对科技创新的推动作用", "weight": 1.0},
+                {"name": "实用性", "description": "可操作性和实施性", "weight": 1.0}
+            ],
+            scoring_range={"min": 0, "max": 10, "total_max": 30},
+            output_format="json",
+            examples=[],
+            instructions=[
+                "总分为各维度分数之和",
+                "评估理由要具体明确",
+                "置信度反映评估的确定程度"
+            ]
+        )
+
+        volcengine_config = AgentConfig(
+            config_name="火山引擎",
+            api_config=api_config,
+            prompt_config=prompt_config,
+            is_default=False
+        )
+
+        self.configs["火山引擎"] = volcengine_config
+        self.save_config("火山引擎")
+
     def save_config(self, config_name: str):
         """保存配置到文件"""
         if config_name not in self.configs:
@@ -422,6 +550,71 @@ class AgentConfigManager:
             data['prompt_config'] = AgentPromptConfig(**data['prompt_config'])
         
         return AgentConfig(**data)
+
+    def get_all_prompt_configs(self) -> Dict[str, AgentPromptConfig]:
+        """获取所有提示词配置"""
+        prompt_configs = {}
+        for config_name, config in self.configs.items():
+            if config.prompt_config:
+                prompt_configs[config.prompt_config.name] = config.prompt_config
+        return prompt_configs
+
+    def create_prompt_config(self, prompt_config: AgentPromptConfig) -> str:
+        """创建新的提示词配置"""
+        # 确保提示词配置名称唯一
+        base_name = prompt_config.name
+        counter = 1
+        existing_names = [config.prompt_config.name for config in self.configs.values() if config.prompt_config]
+
+        while prompt_config.name in existing_names:
+            prompt_config.name = f"{base_name}_{counter}"
+            counter += 1
+
+        # 创建一个新的Agent配置来包含这个提示词配置
+        new_agent_config = AgentConfig(
+            config_name=f"提示词_{prompt_config.name}",
+            api_config=AgentAPIConfig(),  # 使用默认API配置
+            prompt_config=prompt_config,
+            is_default=False
+        )
+
+        # 保存配置
+        self.configs[new_agent_config.config_name] = new_agent_config
+        self.save_config(new_agent_config.config_name)
+
+        return prompt_config.name
+
+    def update_prompt_config(self, prompt_name: str, new_prompt_config: AgentPromptConfig):
+        """更新提示词配置"""
+        # 找到包含该提示词配置的Agent配置
+        for config_name, config in self.configs.items():
+            if config.prompt_config and config.prompt_config.name == prompt_name:
+                config.prompt_config = new_prompt_config
+                self.save_config(config_name)
+                return
+
+        raise ValueError(f"提示词配置 '{prompt_name}' 不存在")
+
+    def delete_prompt_config(self, prompt_name: str):
+        """删除提示词配置"""
+        # 找到包含该提示词配置的Agent配置
+        config_to_delete = None
+        for config_name, config in self.configs.items():
+            if config.prompt_config and config.prompt_config.name == prompt_name:
+                # 如果这是一个专门为提示词创建的配置，删除整个配置
+                if config_name.startswith(f"提示词_{prompt_name}"):
+                    config_to_delete = config_name
+                else:
+                    # 否则只清空提示词配置
+                    config.prompt_config = AgentPromptConfig()
+                    self.save_config(config_name)
+                break
+
+        if config_to_delete:
+            self.delete_config(config_to_delete)
+        elif not any(config.prompt_config and config.prompt_config.name == prompt_name
+                    for config in self.configs.values()):
+            raise ValueError(f"提示词配置 '{prompt_name}' 不存在")
 
 
 # 全局配置管理器实例

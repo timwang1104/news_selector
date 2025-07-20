@@ -20,8 +20,8 @@ class AIClient:
 
     def __init__(self, config: AIFilterConfig):
         self.config = config
-        self.session = self._create_session()
         self.agent_config = self._get_agent_config()
+        self.session = self._create_session()
 
     def _get_agent_config(self):
         """获取Agent配置（延迟导入避免循环依赖）"""
@@ -38,6 +38,25 @@ class AIClient:
             'Content-Type': 'application/json',
             'Authorization': f'Bearer {self.config.api_key}'
         })
+
+        # 配置代理设置（如果有Agent配置）
+        if self.agent_config and self.agent_config.api_config:
+            api_config = self.agent_config.api_config
+
+            # 设置代理
+            if api_config.proxy:
+                session.proxies = {
+                    'http': api_config.proxy,
+                    'https': api_config.proxy
+                }
+
+            # 设置SSL验证
+            session.verify = api_config.verify_ssl
+
+            # 设置自定义请求头
+            if api_config.headers:
+                session.headers.update(api_config.headers)
+
         return session
     
     def evaluate_article(self, article: NewsArticle) -> AIEvaluation:
@@ -215,7 +234,16 @@ class AIClient:
                 practicality=int(data['practicality']),
                 total_score=int(data['total_score']),
                 reasoning=str(data['reasoning']),
-                confidence=float(data['confidence'])
+                confidence=float(data['confidence']),
+                # AI AGENT增强信息（向后兼容）
+                summary=data.get('summary', ''),
+                key_insights=data.get('key_insights', []),
+                highlights=data.get('highlights', []),
+                tags=data.get('tags', []),
+                detailed_analysis=data.get('detailed_analysis', {}),
+                recommendation_reason=data.get('recommendation_reason', ''),
+                risk_assessment=data.get('risk_assessment', ''),
+                implementation_suggestions=data.get('implementation_suggestions', [])
             )
             
         except (json.JSONDecodeError, ValueError, KeyError) as e:
@@ -251,7 +279,16 @@ class AIClient:
                     practicality=int(data['practicality']),
                     total_score=int(data['total_score']),
                     reasoning=str(data['reasoning']),
-                    confidence=float(data['confidence'])
+                    confidence=float(data['confidence']),
+                    # AI AGENT增强信息（向后兼容）
+                    summary=data.get('summary', ''),
+                    key_insights=data.get('key_insights', []),
+                    highlights=data.get('highlights', []),
+                    tags=data.get('tags', []),
+                    detailed_analysis=data.get('detailed_analysis', {}),
+                    recommendation_reason=data.get('recommendation_reason', ''),
+                    risk_assessment=data.get('risk_assessment', ''),
+                    implementation_suggestions=data.get('implementation_suggestions', [])
                 )
                 evaluations.append(evaluation)
             
@@ -267,11 +304,24 @@ class AIClient:
     
     def _fallback_evaluation(self, article: NewsArticle, base_score: int = 15) -> AIEvaluation:
         """降级评估（当AI服务不可用时）"""
+        article_title = article.title if article else "未知文章"
         return AIEvaluation(
             relevance_score=int(base_score * 0.4),
             innovation_impact=int(base_score * 0.3),
             practicality=int(base_score * 0.3),
             total_score=base_score,
             reasoning=FALLBACK_REASONING,
-            confidence=0.5
+            confidence=0.5,
+            summary=f"AI服务不可用，无法生成{article_title}的摘要",
+            key_insights=["AI服务暂时不可用", "建议稍后重试"],
+            highlights=["需要人工审核"],
+            tags=["待分析", "AI服务异常"],
+            detailed_analysis={
+                "政策相关性": "AI服务不可用，无法分析",
+                "创新影响": "AI服务不可用，无法分析",
+                "实用性": "AI服务不可用，无法分析"
+            },
+            recommendation_reason="AI服务异常，建议人工审核或稍后重试",
+            risk_assessment="AI服务不可用，评估结果可能不准确，建议谨慎使用",
+            implementation_suggestions=["等待AI服务恢复", "进行人工审核", "稍后重新评估"]
         )

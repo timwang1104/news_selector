@@ -18,6 +18,9 @@ def create_ai_client(config: AIFilterConfig):
     if agent_config and agent_config.api_config.provider == "siliconflow":
         from .siliconflow_client import SiliconFlowClient
         return SiliconFlowClient(config)
+    elif agent_config and agent_config.api_config.provider == "volcengine":
+        from .volcengine_client import VolcengineClient
+        return VolcengineClient(config)
     else:
         from .client import AIClient
         return AIClient(config)

@@ -69,7 +69,16 @@ class AIResultCache:
             'practicality': evaluation.practicality,
             'total_score': evaluation.total_score,
             'reasoning': evaluation.reasoning,
-            'confidence': evaluation.confidence
+            'confidence': evaluation.confidence,
+            # AI AGENT增强信息
+            'summary': evaluation.summary,
+            'key_insights': evaluation.key_insights,
+            'highlights': evaluation.highlights,
+            'tags': evaluation.tags,
+            'detailed_analysis': evaluation.detailed_analysis,
+            'recommendation_reason': evaluation.recommendation_reason,
+            'risk_assessment': evaluation.risk_assessment,
+            'implementation_suggestions': evaluation.implementation_suggestions
         }
     
     def _deserialize_evaluation(self, data: Dict[str, Any]) -> AIEvaluation:
@@ -80,7 +89,16 @@ class AIResultCache:
             practicality=data['practicality'],
             total_score=data['total_score'],
             reasoning=data['reasoning'],
-            confidence=data['confidence']
+            confidence=data['confidence'],
+            # AI AGENT增强信息（向后兼容）
+            summary=data.get('summary', ''),
+            key_insights=data.get('key_insights', []),
+            highlights=data.get('highlights', []),
+            tags=data.get('tags', []),
+            detailed_analysis=data.get('detailed_analysis', {}),
+            recommendation_reason=data.get('recommendation_reason', ''),
+            risk_assessment=data.get('risk_assessment', ''),
+            implementation_suggestions=data.get('implementation_suggestions', [])
         )
     
     def _evict_oldest(self):

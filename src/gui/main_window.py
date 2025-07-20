@@ -16,7 +16,6 @@ from ..models.subscription import Subscription
 from .login_dialog import LoginDialog
 from .filter_config_dialog import FilterConfigDialog
 from .filter_progress_dialog import FilterProgressDialog, FilterMetricsDialog
-from .agent_config_dialog import AgentConfigDialog
 from .rss_manager import RSSManager
 
 
@@ -93,7 +92,6 @@ class MainWindow:
         filter_menu.add_command(label="批量筛选", command=self.batch_filter_articles)
         filter_menu.add_separator()
         filter_menu.add_command(label="筛选配置", command=self.show_filter_config)
-        filter_menu.add_command(label="AI Agent配置", command=self.show_agent_config)
         filter_menu.add_command(label="性能指标", command=self.show_filter_metrics)
         
         # 帮助菜单
@@ -208,21 +206,25 @@ class MainWindow:
         list_frame.pack(fill=tk.BOTH, expand=True)
         
         # 创建Treeview用于显示文章
-        columns = ("title", "feed", "date", "status", "score")
+        columns = ("title", "feed", "date", "status", "score", "ai_summary", "ai_tags")
         self.article_tree = ttk.Treeview(list_frame, columns=columns, show="headings")
-        
+
         # 设置列
         self.article_tree.heading("title", text="标题")
         self.article_tree.heading("feed", text="来源")
         self.article_tree.heading("date", text="日期")
         self.article_tree.heading("status", text="状态")
         self.article_tree.heading("score", text="筛选分数")
+        self.article_tree.heading("ai_summary", text="AI摘要")
+        self.article_tree.heading("ai_tags", text="AI标签")
 
-        self.article_tree.column("title", width=350)
-        self.article_tree.column("feed", width=120)
-        self.article_tree.column("date", width=120)
+        self.article_tree.column("title", width=300)
+        self.article_tree.column("feed", width=100)
+        self.article_tree.column("date", width=100)
         self.article_tree.column("status", width=80)
         self.article_tree.column("score", width=80)
+        self.article_tree.column("ai_summary", width=200)
+        self.article_tree.column("ai_tags", width=150)
         
         # 添加滚动条
         article_scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.article_tree.yview)
@@ -274,13 +276,14 @@ class MainWindow:
         """创建文章右键菜单"""
         self.article_context_menu = tk.Menu(self.root, tearoff=0)
         self.article_context_menu.add_command(label="查看详情", command=self.view_article_detail)
+        self.article_context_menu.add_command(label="查看AI分析", command=self.view_ai_analysis)
         self.article_context_menu.add_command(label="打开原文", command=self.open_article_url)
         self.article_context_menu.add_separator()
         self.article_context_menu.add_command(label="标记为已读", command=self.mark_as_read)
         self.article_context_menu.add_command(label="标记为未读", command=self.mark_as_unread)
         self.article_context_menu.add_separator()
         self.article_context_menu.add_command(label="加星标", command=self.toggle_star)
-        
+
         self.article_tree.bind("<Button-3>", self.show_article_context_menu)
     
     def create_status_bar(self):
@@ -460,7 +463,9 @@ class MainWindow:
                 article.feed_title or "未知",
                 article.published.strftime("%m-%d %H:%M"),
                 status_text,
-                ""  # 普通文章没有筛选分数
+                "",  # 普通文章没有筛选分数
+                "",  # 普通文章没有AI摘要
+                ""   # 普通文章没有AI标签
             ))
 
     def search_subscriptions(self, event=None):
@@ -528,7 +533,9 @@ class MainWindow:
                 article.feed_title or "未知",
                 article.published.strftime("%m-%d %H:%M"),
                 status_text,
-                ""  # 搜索结果没有筛选分数
+                "",  # 搜索结果没有筛选分数
+                "",  # 搜索结果没有AI摘要
+                ""   # 搜索结果没有AI标签
             ))
 
         self.update_status(f"找到 {len(matched_articles)} 篇相关文章")
@@ -1104,11 +1111,20 @@ class MainWindow:
                 # 添加筛选标记
                 status_text = f"[筛选] {status_text}"
 
-                # 获取筛选分数
+                # 获取筛选分数和AI分析信息
                 score_text = ""
+                ai_summary = ""
+                ai_tags = ""
+
                 if self.filter_result and i < len(self.filter_result.selected_articles):
                     combined_result = self.filter_result.selected_articles[i]
                     score_text = f"{combined_result.final_score:.3f}"
+
+                    # 获取AI分析信息
+                    if combined_result.ai_result and combined_result.ai_result.evaluation:
+                        evaluation = combined_result.ai_result.evaluation
+                        ai_summary = evaluation.summary[:50] + "..." if len(evaluation.summary) > 50 else evaluation.summary
+                        ai_tags = ", ".join(evaluation.tags[:3])  # 显示前3个标签
 
                 # 获取发布时间
                 try:
@@ -1127,7 +1143,9 @@ class MainWindow:
                     getattr(article, 'feed_title', None) or getattr(article, 'source', None) or "未知",
                     date_text,
                     status_text,
-                    score_text
+                    score_text,
+                    ai_summary,
+                    ai_tags
                 ))
 
                 print(f"   添加文章 {i+1}: {article.title[:30]}...")
@@ -1225,12 +1243,6 @@ AI筛选通过: {result.ai_filtered_count}
         config_dialog = FilterConfigDialog(self.root)
         if config_dialog.result:
             messagebox.showinfo("提示", "配置已更新，下次筛选时生效")
-
-    def show_agent_config(self):
-        """显示AI Agent配置对话框"""
-        agent_dialog = AgentConfigDialog(self.root)
-        if agent_dialog.result:
-            messagebox.showinfo("提示", "AI Agent配置已更新，下次筛选时生效")
 
     def show_filter_metrics(self):
         """显示筛选性能指标"""

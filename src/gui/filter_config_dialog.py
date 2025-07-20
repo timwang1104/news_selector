@@ -3,8 +3,9 @@
 """
 import tkinter as tk
 from tkinter import ttk, messagebox
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from ..services.filter_service import filter_service
+from ..config.agent_config import agent_config_manager, AgentConfig, AgentAPIConfig, AgentPromptConfig
 
 
 class FilterConfigDialog:
@@ -13,24 +14,25 @@ class FilterConfigDialog:
     def __init__(self, parent):
         self.parent = parent
         self.result = False
-        
+
         # 创建对话框
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("筛选配置")
-        self.dialog.geometry("500x600")
-        self.dialog.resizable(False, False)
+        self.dialog.geometry("850x700")
+        self.dialog.resizable(True, True)
         self.dialog.transient(parent)
         self.dialog.grab_set()
-        
+
         # 配置变量
         self.config_vars = {}
         self.keywords_data = {}  # 存储关键词数据
-        
+        self.current_agent_config: Optional[AgentConfig] = None
+
         # 创建界面
         self.create_widgets()
         self.load_current_config()
         self.center_window()
-        
+
         # 等待对话框关闭
         self.dialog.wait_window()
     
@@ -175,59 +177,265 @@ class FilterConfigDialog:
         """创建AI筛选配置标签页"""
         frame = ttk.Frame(notebook)
         notebook.add(frame, text="AI筛选")
-        
+
+        # 创建滚动框架
+        canvas = tk.Canvas(frame)
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # AI配置管理
+        self.create_ai_config_management(scrollable_frame)
+
         # AI服务设置
-        ai_frame = ttk.LabelFrame(frame, text="AI服务设置")
-        ai_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        # API Key
-        ttk.Label(ai_frame, text="API Key:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
-        self.config_vars['api_key'] = tk.StringVar()
-        api_key_entry = ttk.Entry(ai_frame, textvariable=self.config_vars['api_key'], 
-                                 width=40, show="*")
-        api_key_entry.grid(row=0, column=1, padx=5, pady=5)
-        
-        # 模型名称
-        ttk.Label(ai_frame, text="模型名称:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
-        self.config_vars['model_name'] = tk.StringVar()
-        model_combo = ttk.Combobox(ai_frame, textvariable=self.config_vars['model_name'],
-                                  values=["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"], width=20)
-        model_combo.grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
-        
-        # Base URL
-        ttk.Label(ai_frame, text="Base URL (可选):").grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
-        self.config_vars['base_url'] = tk.StringVar()
-        ttk.Entry(ai_frame, textvariable=self.config_vars['base_url'], width=40).grid(row=2, column=1, padx=5, pady=5)
-        
+        self.create_ai_service_settings(scrollable_frame)
+
         # 筛选设置
-        filter_frame = ttk.LabelFrame(frame, text="筛选设置")
-        filter_frame.pack(fill=tk.X, pady=(0, 10))
-        
+        self.create_ai_filter_settings(scrollable_frame)
+
+        # 高级设置
+        self.create_ai_advanced_settings(scrollable_frame)
+
+        # 提示词设置
+        self.create_ai_prompt_settings(scrollable_frame)
+
+        # 性能设置
+        self.create_ai_performance_settings(scrollable_frame)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+    def create_ai_config_management(self, parent):
+        """创建AI配置管理区域"""
+        config_frame = ttk.LabelFrame(parent, text="配置管理")
+        config_frame.pack(fill=tk.X, pady=(0, 10), padx=5)
+
+        # 配置选择
+        ttk.Label(config_frame, text="当前配置:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        self.config_vars['current_agent_config'] = tk.StringVar()
+        self.agent_config_combo = ttk.Combobox(config_frame, textvariable=self.config_vars['current_agent_config'],
+                                              width=25, state="readonly")
+        self.agent_config_combo.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W+tk.E)
+        self.agent_config_combo.bind("<<ComboboxSelected>>", self.on_agent_config_change)
+
+        # 配置管理按钮
+        button_frame = ttk.Frame(config_frame)
+        button_frame.grid(row=0, column=2, padx=(10, 5), pady=5)
+
+        ttk.Button(button_frame, text="新建", command=self.new_agent_config, width=8).pack(side=tk.LEFT, padx=2)
+        ttk.Button(button_frame, text="编辑", command=self.edit_agent_config, width=8).pack(side=tk.LEFT, padx=2)
+        ttk.Button(button_frame, text="删除", command=self.delete_agent_config, width=8).pack(side=tk.LEFT, padx=2)
+
+        # 加载配置列表
+        self.load_agent_config_list()
+
+        # 配置网格权重
+        config_frame.grid_columnconfigure(1, weight=1)
+
+    def create_ai_service_settings(self, parent):
+        """创建AI服务设置区域"""
+        ai_frame = ttk.LabelFrame(parent, text="AI服务设置")
+        ai_frame.pack(fill=tk.X, pady=(0, 10), padx=5)
+
+        # 服务提供商
+        ttk.Label(ai_frame, text="服务提供商:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        self.config_vars['provider'] = tk.StringVar()
+        provider_combo = ttk.Combobox(ai_frame, textvariable=self.config_vars['provider'],
+                                     values=["openai", "siliconflow", "volcengine", "custom"],
+                                     width=18, state="readonly")
+        provider_combo.grid(row=0, column=1, sticky=tk.W+tk.E, padx=5, pady=5)
+        provider_combo.bind("<<ComboboxSelected>>", self.on_provider_change)
+
+        # API Key
+        ttk.Label(ai_frame, text="API Key:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        self.config_vars['api_key'] = tk.StringVar()
+        api_key_entry = ttk.Entry(ai_frame, textvariable=self.config_vars['api_key'],
+                                 width=35, show="*")
+        api_key_entry.grid(row=1, column=1, columnspan=2, sticky=tk.W+tk.E, padx=5, pady=5)
+
+        # Base URL
+        ttk.Label(ai_frame, text="Base URL:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
+        self.config_vars['base_url'] = tk.StringVar()
+        ttk.Entry(ai_frame, textvariable=self.config_vars['base_url'], width=35).grid(
+            row=2, column=1, columnspan=2, sticky=tk.W+tk.E, padx=5, pady=5)
+
+        # 模型名称
+        ttk.Label(ai_frame, text="模型名称:").grid(row=3, column=0, sticky=tk.W, padx=5, pady=5)
+        self.config_vars['model_name'] = tk.StringVar()
+        self.model_combo = ttk.Combobox(ai_frame, textvariable=self.config_vars['model_name'], width=28)
+        self.model_combo.grid(row=3, column=1, sticky=tk.W+tk.E, padx=5, pady=5)
+
+        # 根据提供商更新模型列表
+        self.update_model_list()
+
+        # 配置网格权重
+        ai_frame.grid_columnconfigure(1, weight=1)
+
+    def create_ai_filter_settings(self, parent):
+        """创建AI筛选设置区域"""
+        filter_frame = ttk.LabelFrame(parent, text="筛选设置")
+        filter_frame.pack(fill=tk.X, pady=(0, 10), padx=5)
+
         # AI阈值
         ttk.Label(filter_frame, text="AI评分阈值 (0-30):").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
         self.config_vars['ai_threshold'] = tk.IntVar()
         ttk.Spinbox(filter_frame, from_=0, to=30, textvariable=self.config_vars['ai_threshold'],
                    width=10).grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
-        
+
         # 最大请求数
         ttk.Label(filter_frame, text="最大请求数:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
         self.config_vars['max_requests'] = tk.IntVar()
         ttk.Spinbox(filter_frame, from_=1, to=200, textvariable=self.config_vars['max_requests'],
                    width=10).grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
-        
-        # 性能设置
-        perf_frame = ttk.LabelFrame(frame, text="性能设置")
-        perf_frame.pack(fill=tk.X)
-        
+
+    def create_ai_advanced_settings(self, parent):
+        """创建AI高级设置区域"""
+        advanced_frame = ttk.LabelFrame(parent, text="高级设置")
+        advanced_frame.pack(fill=tk.X, pady=(0, 10), padx=5)
+
+        # Temperature
+        ttk.Label(advanced_frame, text="Temperature (0.0-2.0):").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        self.config_vars['temperature'] = tk.DoubleVar()
+        ttk.Spinbox(advanced_frame, from_=0.0, to=2.0, increment=0.1,
+                   textvariable=self.config_vars['temperature'], width=10).grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
+
+        # Max Tokens
+        ttk.Label(advanced_frame, text="Max Tokens:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        self.config_vars['max_tokens'] = tk.IntVar()
+        ttk.Spinbox(advanced_frame, from_=100, to=4000, textvariable=self.config_vars['max_tokens'],
+                   width=10).grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
+
+        # Timeout
+        ttk.Label(advanced_frame, text="超时时间(秒):").grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
+        self.config_vars['timeout'] = tk.IntVar()
+        ttk.Spinbox(advanced_frame, from_=10, to=120, textvariable=self.config_vars['timeout'],
+                   width=10).grid(row=2, column=1, sticky=tk.W, padx=5, pady=5)
+
+        # Retry Times
+        ttk.Label(advanced_frame, text="重试次数:").grid(row=3, column=0, sticky=tk.W, padx=5, pady=5)
+        self.config_vars['retry_times'] = tk.IntVar()
+        ttk.Spinbox(advanced_frame, from_=0, to=5, textvariable=self.config_vars['retry_times'],
+                   width=10).grid(row=3, column=1, sticky=tk.W, padx=5, pady=5)
+
+        # Proxy
+        ttk.Label(advanced_frame, text="代理设置:").grid(row=4, column=0, sticky=tk.W, padx=5, pady=5)
+        self.config_vars['proxy'] = tk.StringVar()
+        ttk.Entry(advanced_frame, textvariable=self.config_vars['proxy'], width=28).grid(
+            row=4, column=1, columnspan=2, sticky=tk.W+tk.E, padx=5, pady=5)
+
+        # SSL验证
+        self.config_vars['verify_ssl'] = tk.BooleanVar()
+        ttk.Checkbutton(advanced_frame, text="启用SSL验证",
+                       variable=self.config_vars['verify_ssl']).grid(row=5, column=0, columnspan=2, sticky=tk.W, padx=5, pady=5)
+
+        # 配置网格权重
+        advanced_frame.grid_columnconfigure(1, weight=1)
+
+    def create_ai_performance_settings(self, parent):
+        """创建AI性能设置区域"""
+        perf_frame = ttk.LabelFrame(parent, text="性能设置")
+        perf_frame.pack(fill=tk.X, padx=5)
+
         # 启用缓存
         self.config_vars['enable_cache'] = tk.BooleanVar()
-        ttk.Checkbutton(perf_frame, text="启用缓存", 
+        ttk.Checkbutton(perf_frame, text="启用缓存",
                        variable=self.config_vars['enable_cache']).pack(anchor=tk.W, padx=5, pady=2)
-        
+
         # 启用降级策略
         self.config_vars['fallback_enabled'] = tk.BooleanVar()
-        ttk.Checkbutton(perf_frame, text="启用降级策略", 
+        ttk.Checkbutton(perf_frame, text="启用降级策略",
                        variable=self.config_vars['fallback_enabled']).pack(anchor=tk.W, padx=5, pady=2)
+
+    def create_ai_prompt_settings(self, parent):
+        """创建AI提示词设置区域"""
+        prompt_frame = ttk.LabelFrame(parent, text="提示词配置")
+        prompt_frame.pack(fill=tk.X, pady=(0, 10), padx=5)
+
+        # 提示词配置选择
+        config_select_frame = ttk.Frame(prompt_frame)
+        config_select_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        ttk.Label(config_select_frame, text="提示词配置:").pack(side=tk.LEFT)
+        self.config_vars['prompt_config_name'] = tk.StringVar()
+        self.prompt_config_combo = ttk.Combobox(config_select_frame,
+                                               textvariable=self.config_vars['prompt_config_name'],
+                                               width=25, state="readonly")
+        self.prompt_config_combo.pack(side=tk.LEFT, padx=(5, 10))
+        self.prompt_config_combo.bind("<<ComboboxSelected>>", self.on_prompt_config_change)
+
+        # 提示词管理按钮
+        prompt_button_frame = ttk.Frame(config_select_frame)
+        prompt_button_frame.pack(side=tk.LEFT)
+
+        ttk.Button(prompt_button_frame, text="编辑", command=self.edit_prompt_config, width=8).pack(side=tk.LEFT, padx=2)
+        ttk.Button(prompt_button_frame, text="新建", command=self.new_prompt_config, width=8).pack(side=tk.LEFT, padx=2)
+        ttk.Button(prompt_button_frame, text="删除", command=self.delete_prompt_config, width=8).pack(side=tk.LEFT, padx=2)
+
+        # 提示词预览区域
+        preview_frame = ttk.Frame(prompt_frame)
+        preview_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # 系统提示词预览
+        ttk.Label(preview_frame, text="系统提示词预览:").pack(anchor=tk.W)
+        self.system_prompt_preview = tk.Text(preview_frame, height=3, width=70, state="disabled", wrap=tk.WORD)
+        self.system_prompt_preview.pack(fill=tk.BOTH, pady=(2, 5))
+
+        # 评估提示词预览
+        ttk.Label(preview_frame, text="评估提示词预览:").pack(anchor=tk.W)
+        self.eval_prompt_preview = tk.Text(preview_frame, height=4, width=70, state="disabled", wrap=tk.WORD)
+        self.eval_prompt_preview.pack(fill=tk.BOTH, expand=True, pady=(2, 5))
+
+        # 加载提示词配置列表
+        self.load_prompt_config_list()
+
+    def create_ai_prompt_settings(self, parent):
+        """创建AI提示词设置区域"""
+        prompt_frame = ttk.LabelFrame(parent, text="提示词配置")
+        prompt_frame.pack(fill=tk.X, pady=(0, 10), padx=5)
+
+        # 提示词配置选择
+        config_select_frame = ttk.Frame(prompt_frame)
+        config_select_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        ttk.Label(config_select_frame, text="提示词配置:").pack(side=tk.LEFT)
+        self.config_vars['prompt_config_name'] = tk.StringVar()
+        self.prompt_config_combo = ttk.Combobox(config_select_frame,
+                                               textvariable=self.config_vars['prompt_config_name'],
+                                               width=25, state="readonly")
+        self.prompt_config_combo.pack(side=tk.LEFT, padx=(5, 10))
+        self.prompt_config_combo.bind("<<ComboboxSelected>>", self.on_prompt_config_change)
+
+        # 提示词管理按钮
+        prompt_button_frame = ttk.Frame(config_select_frame)
+        prompt_button_frame.pack(side=tk.LEFT)
+
+        ttk.Button(prompt_button_frame, text="编辑", command=self.edit_prompt_config, width=8).pack(side=tk.LEFT, padx=2)
+        ttk.Button(prompt_button_frame, text="新建", command=self.new_prompt_config, width=8).pack(side=tk.LEFT, padx=2)
+        ttk.Button(prompt_button_frame, text="删除", command=self.delete_prompt_config, width=8).pack(side=tk.LEFT, padx=2)
+
+        # 提示词预览区域
+        preview_frame = ttk.Frame(prompt_frame)
+        preview_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # 系统提示词预览
+        ttk.Label(preview_frame, text="系统提示词预览:").pack(anchor=tk.W)
+        self.system_prompt_preview = tk.Text(preview_frame, height=3, width=80, state="disabled", wrap=tk.WORD)
+        self.system_prompt_preview.pack(fill=tk.X, pady=(2, 5))
+
+        # 评估提示词预览
+        ttk.Label(preview_frame, text="评估提示词预览:").pack(anchor=tk.W)
+        self.eval_prompt_preview = tk.Text(preview_frame, height=4, width=80, state="disabled", wrap=tk.WORD)
+        self.eval_prompt_preview.pack(fill=tk.X, pady=(2, 5))
+
+        # 加载提示词配置列表
+        self.load_prompt_config_list()
     
     def create_chain_config_tab(self, notebook):
         """创建筛选链配置标签页"""
@@ -313,6 +521,9 @@ class FilterConfigDialog:
             # 加载关键词信息
             self.update_keyword_info()
 
+            # 加载AI Agent配置
+            self.load_agent_config_list()
+
         except Exception as e:
             messagebox.showerror("错误", f"加载配置失败: {e}")
     
@@ -339,6 +550,10 @@ class FilterConfigDialog:
                 enable_cache=self.config_vars['enable_cache'].get(),
                 fallback_enabled=self.config_vars['fallback_enabled'].get()
             )
+
+            # 保存AI Agent配置
+            if self.current_agent_config:
+                self.save_current_agent_config()
             
             # 保存筛选链配置
             filter_service.update_config("chain",
@@ -436,3 +651,532 @@ class FilterConfigDialog:
 
         info_text = f"共 {categories} 个分类，{total_keywords} 个关键词"
         self.keyword_info_label.config(text=info_text)
+
+    # AI配置管理相关方法
+    def load_agent_config_list(self):
+        """加载AI Agent配置列表"""
+        try:
+            # 确保agent_config_combo存在
+            if not hasattr(self, 'agent_config_combo'):
+                print("agent_config_combo 不存在，跳过AI配置加载")
+                return
+
+            # 确保current_agent_config变量存在
+            if 'current_agent_config' not in self.config_vars:
+                self.config_vars['current_agent_config'] = tk.StringVar()
+
+            config_list = agent_config_manager.get_config_list()
+            self.agent_config_combo['values'] = config_list
+
+            # 设置当前配置
+            current_config = agent_config_manager.get_current_config()
+            if current_config:
+                self.config_vars['current_agent_config'].set(current_config.config_name)
+                self.current_agent_config = current_config
+                self.load_agent_config_to_ui(current_config)
+            elif config_list:
+                # 如果没有当前配置，选择第一个
+                first_config = agent_config_manager.load_config(config_list[0])
+                if first_config:
+                    self.config_vars['current_agent_config'].set(config_list[0])
+                    self.current_agent_config = first_config
+                    self.load_agent_config_to_ui(first_config)
+        except Exception as e:
+            print(f"加载AI配置列表失败: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def on_agent_config_change(self, event=None):
+        """AI配置选择变化事件"""
+        config_name = self.config_vars['current_agent_config'].get()
+        if config_name:
+            try:
+                config = agent_config_manager.load_config(config_name)
+                if config:
+                    self.current_agent_config = config
+                    self.load_agent_config_to_ui(config)
+            except Exception as e:
+                messagebox.showerror("错误", f"加载配置失败: {e}")
+
+    def load_agent_config_to_ui(self, config: AgentConfig):
+        """将AI配置加载到界面"""
+        try:
+            # 确保所有变量都已初始化
+            required_vars = {
+                'provider': tk.StringVar,
+                'api_key': tk.StringVar,
+                'base_url': tk.StringVar,
+                'model_name': tk.StringVar,
+                'temperature': tk.DoubleVar,
+                'max_tokens': tk.IntVar,
+                'timeout': tk.IntVar,
+                'retry_times': tk.IntVar,
+                'proxy': tk.StringVar,
+                'verify_ssl': tk.BooleanVar
+            }
+
+            for var_name, var_type in required_vars.items():
+                if var_name not in self.config_vars:
+                    self.config_vars[var_name] = var_type()
+
+            # API配置
+            self.config_vars['provider'].set(config.api_config.provider)
+            self.config_vars['api_key'].set(config.api_config.api_key)
+            self.config_vars['base_url'].set(config.api_config.base_url)
+            self.config_vars['model_name'].set(config.api_config.model_name)
+
+            # 高级设置
+            self.config_vars['temperature'].set(config.api_config.temperature)
+            self.config_vars['max_tokens'].set(config.api_config.max_tokens)
+            self.config_vars['timeout'].set(config.api_config.timeout)
+            self.config_vars['retry_times'].set(config.api_config.retry_times)
+            self.config_vars['proxy'].set(config.api_config.proxy)
+            self.config_vars['verify_ssl'].set(config.api_config.verify_ssl)
+
+            # 更新模型列表
+            self.update_model_list()
+
+            # 更新提示词配置
+            if hasattr(self, 'config_vars') and 'prompt_config_name' in self.config_vars:
+                if config.prompt_config and config.prompt_config.name:
+                    self.config_vars['prompt_config_name'].set(config.prompt_config.name)
+                    self.update_prompt_preview()
+                else:
+                    # 如果没有提示词配置，清空选择
+                    self.config_vars['prompt_config_name'].set("")
+                    if hasattr(self, 'system_prompt_preview'):
+                        self.system_prompt_preview.config(state="normal")
+                        self.system_prompt_preview.delete("1.0", tk.END)
+                        self.system_prompt_preview.config(state="disabled")
+                    if hasattr(self, 'eval_prompt_preview'):
+                        self.eval_prompt_preview.config(state="normal")
+                        self.eval_prompt_preview.delete("1.0", tk.END)
+                        self.eval_prompt_preview.config(state="disabled")
+
+        except Exception as e:
+            print(f"加载AI配置到界面失败: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def on_provider_change(self, event=None):
+        """服务提供商变化事件"""
+        self.update_model_list()
+
+    def update_model_list(self):
+        """根据服务提供商更新模型列表"""
+        try:
+            # 确保必要的变量和组件存在
+            if 'provider' not in self.config_vars:
+                return
+            if not hasattr(self, 'model_combo'):
+                return
+
+            provider = self.config_vars['provider'].get()
+
+            model_lists = {
+                "openai": ["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gpt-4o"],
+                "siliconflow": ["Qwen/Qwen2.5-72B-Instruct", "Qwen/Qwen2.5-32B-Instruct",
+                               "meta-llama/Meta-Llama-3.1-70B-Instruct", "deepseek-ai/DeepSeek-V2.5"],
+                "volcengine": ["ep-20241219105006-xxxxx", "自定义Endpoint"],
+                "custom": ["自定义模型"]
+            }
+
+            models = model_lists.get(provider, ["gpt-3.5-turbo"])
+            self.model_combo['values'] = models
+
+            # 如果当前模型不在列表中，设置为第一个
+            if 'model_name' in self.config_vars:
+                current_model = self.config_vars['model_name'].get()
+                if current_model not in models and models:
+                    self.config_vars['model_name'].set(models[0])
+        except Exception as e:
+            print(f"更新模型列表失败: {e}")
+
+    def new_agent_config(self):
+        """新建AI配置"""
+        try:
+            # 创建新的配置对象
+            new_api_config = AgentAPIConfig(
+                name="新配置",
+                description="",
+                api_key="",
+                base_url="",
+                model_name="gpt-3.5-turbo",
+                provider="openai"
+            )
+
+            new_prompt_config = AgentPromptConfig(
+                name="新提示词",
+                description="",
+                system_prompt="",
+                evaluation_prompt="",
+                batch_evaluation_prompt=""
+            )
+
+            new_config = AgentConfig(
+                config_name="新配置",
+                api_config=new_api_config,
+                prompt_config=new_prompt_config,
+                is_default=False
+            )
+
+            # 创建配置
+            config_name = agent_config_manager.create_config(new_config)
+
+            # 更新界面
+            self.load_agent_config_list()
+            self.config_vars['current_agent_config'].set(config_name)
+            self.current_agent_config = new_config
+
+            messagebox.showinfo("成功", f"已创建新配置: {config_name}")
+
+        except Exception as e:
+            messagebox.showerror("错误", f"创建配置失败: {e}")
+
+    def edit_agent_config(self):
+        """编辑AI配置"""
+        if not self.current_agent_config:
+            messagebox.showwarning("提示", "请先选择要编辑的配置")
+            return
+
+        # 这里可以打开一个简化的编辑对话框，或者直接在当前界面编辑
+        messagebox.showinfo("提示", "请在当前界面直接修改配置参数，保存时会自动更新")
+
+    def delete_agent_config(self):
+        """删除AI配置"""
+        if not self.current_agent_config:
+            messagebox.showwarning("提示", "请先选择要删除的配置")
+            return
+
+        if self.current_agent_config.is_default:
+            messagebox.showwarning("提示", "不能删除默认配置")
+            return
+
+        if messagebox.askyesno("确认删除", f"确定要删除配置 '{self.current_agent_config.config_name}' 吗？"):
+            try:
+                agent_config_manager.delete_config(self.current_agent_config.config_name)
+                self.load_agent_config_list()
+                messagebox.showinfo("成功", "配置已删除")
+            except Exception as e:
+                messagebox.showerror("错误", f"删除配置失败: {e}")
+
+    def load_prompt_config_list(self):
+        """加载提示词配置列表"""
+        try:
+            # 获取所有提示词配置
+            prompt_configs = agent_config_manager.get_all_prompt_configs()
+            config_names = list(prompt_configs.keys())
+
+            # 更新下拉框
+            self.prompt_config_combo['values'] = config_names
+
+            # 设置当前选中的配置
+            if self.current_agent_config and self.current_agent_config.prompt_config:
+                current_name = self.current_agent_config.prompt_config.name
+                if current_name in config_names:
+                    self.config_vars['prompt_config_name'].set(current_name)
+                    self.update_prompt_preview()
+            elif config_names:
+                # 默认选择第一个
+                self.config_vars['prompt_config_name'].set(config_names[0])
+                self.update_prompt_preview()
+
+        except Exception as e:
+            print(f"加载提示词配置列表失败: {e}")
+
+    def on_prompt_config_change(self, event=None):
+        """提示词配置选择变化事件"""
+        self.update_prompt_preview()
+
+    def update_prompt_preview(self):
+        """更新提示词预览"""
+        try:
+            prompt_name = self.config_vars['prompt_config_name'].get()
+            if not prompt_name:
+                return
+
+            # 获取提示词配置
+            prompt_configs = agent_config_manager.get_all_prompt_configs()
+            prompt_config = prompt_configs.get(prompt_name)
+
+            if prompt_config:
+                # 更新系统提示词预览
+                self.system_prompt_preview.config(state="normal")
+                self.system_prompt_preview.delete("1.0", tk.END)
+                self.system_prompt_preview.insert("1.0", prompt_config.system_prompt[:200] + "..." if len(prompt_config.system_prompt) > 200 else prompt_config.system_prompt)
+                self.system_prompt_preview.config(state="disabled")
+
+                # 更新评估提示词预览
+                self.eval_prompt_preview.config(state="normal")
+                self.eval_prompt_preview.delete("1.0", tk.END)
+                self.eval_prompt_preview.insert("1.0", prompt_config.evaluation_prompt[:300] + "..." if len(prompt_config.evaluation_prompt) > 300 else prompt_config.evaluation_prompt)
+                self.eval_prompt_preview.config(state="disabled")
+
+        except Exception as e:
+            print(f"更新提示词预览失败: {e}")
+
+    def edit_prompt_config(self):
+        """编辑提示词配置"""
+        prompt_name = self.config_vars['prompt_config_name'].get()
+        if not prompt_name:
+            messagebox.showwarning("提示", "请先选择要编辑的提示词配置")
+            return
+
+        try:
+            # 获取提示词配置
+            prompt_configs = agent_config_manager.get_all_prompt_configs()
+            prompt_config = prompt_configs.get(prompt_name)
+
+            if prompt_config:
+                # 打开提示词编辑对话框
+                dialog = PromptConfigDialog(self.dialog, prompt_config)
+                if dialog.result:
+                    # 更新配置
+                    agent_config_manager.update_prompt_config(prompt_name, dialog.result)
+                    self.update_prompt_preview()
+                    messagebox.showinfo("成功", "提示词配置已更新")
+
+        except Exception as e:
+            messagebox.showerror("错误", f"编辑提示词配置失败: {e}")
+
+    def new_prompt_config(self):
+        """新建提示词配置"""
+        try:
+            # 创建新的提示词配置
+            new_prompt_config = AgentPromptConfig(
+                name="新提示词配置",
+                description="",
+                system_prompt="",
+                evaluation_prompt="",
+                batch_evaluation_prompt=""
+            )
+
+            # 打开编辑对话框
+            dialog = PromptConfigDialog(self.dialog, new_prompt_config, is_new=True)
+            if dialog.result:
+                # 保存新配置
+                config_name = agent_config_manager.create_prompt_config(dialog.result)
+                self.load_prompt_config_list()
+                self.config_vars['prompt_config_name'].set(config_name)
+                self.update_prompt_preview()
+                messagebox.showinfo("成功", f"已创建新提示词配置: {config_name}")
+
+        except Exception as e:
+            messagebox.showerror("错误", f"创建提示词配置失败: {e}")
+
+    def delete_prompt_config(self):
+        """删除提示词配置"""
+        prompt_name = self.config_vars['prompt_config_name'].get()
+        if not prompt_name:
+            messagebox.showwarning("提示", "请先选择要删除的提示词配置")
+            return
+
+        if messagebox.askyesno("确认删除", f"确定要删除提示词配置 '{prompt_name}' 吗？"):
+            try:
+                agent_config_manager.delete_prompt_config(prompt_name)
+                self.load_prompt_config_list()
+                messagebox.showinfo("成功", "提示词配置已删除")
+            except Exception as e:
+                messagebox.showerror("错误", f"删除提示词配置失败: {e}")
+
+    def save_current_agent_config(self):
+        """保存当前AI Agent配置"""
+        if not self.current_agent_config:
+            return
+
+        try:
+            # 更新API配置
+            self.current_agent_config.api_config.provider = self.config_vars['provider'].get()
+            self.current_agent_config.api_config.api_key = self.config_vars['api_key'].get()
+            self.current_agent_config.api_config.base_url = self.config_vars['base_url'].get()
+            self.current_agent_config.api_config.model_name = self.config_vars['model_name'].get()
+            self.current_agent_config.api_config.temperature = self.config_vars['temperature'].get()
+            self.current_agent_config.api_config.max_tokens = self.config_vars['max_tokens'].get()
+            self.current_agent_config.api_config.timeout = self.config_vars['timeout'].get()
+            self.current_agent_config.api_config.retry_times = self.config_vars['retry_times'].get()
+            self.current_agent_config.api_config.proxy = self.config_vars['proxy'].get()
+            self.current_agent_config.api_config.verify_ssl = self.config_vars['verify_ssl'].get()
+
+            # 更新提示词配置
+            if 'prompt_config_name' in self.config_vars:
+                prompt_name = self.config_vars['prompt_config_name'].get()
+                if prompt_name:
+                    # 获取选中的提示词配置
+                    prompt_configs = agent_config_manager.get_all_prompt_configs()
+                    if prompt_name in prompt_configs:
+                        self.current_agent_config.prompt_config = prompt_configs[prompt_name]
+
+            # 保存配置
+            agent_config_manager.update_config(
+                self.current_agent_config.config_name,
+                self.current_agent_config
+            )
+
+            # 设置为当前配置
+            agent_config_manager.set_current_config(self.current_agent_config.config_name)
+
+        except Exception as e:
+            print(f"保存AI Agent配置失败: {e}")
+
+
+class PromptConfigDialog:
+    """提示词配置编辑对话框"""
+
+    def __init__(self, parent, prompt_config, is_new=False):
+        self.result = None
+        self.prompt_config = prompt_config
+        self.is_new = is_new
+
+        # 创建对话框窗口
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("编辑提示词配置" if not is_new else "新建提示词配置")
+        self.dialog.geometry("800x700")
+        self.dialog.resizable(True, True)
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+
+        # 居中显示
+        self.dialog.geometry("+%d+%d" % (
+            parent.winfo_rootx() + 50,
+            parent.winfo_rooty() + 50
+        ))
+
+        self.create_widgets()
+
+        # 等待对话框关闭
+        self.dialog.wait_window()
+
+    def create_widgets(self):
+        """创建对话框组件"""
+        main_frame = ttk.Frame(self.dialog)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+        # 基本信息
+        info_frame = ttk.LabelFrame(main_frame, text="基本信息")
+        info_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # 名称
+        ttk.Label(info_frame, text="名称:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        self.name_var = tk.StringVar(value=self.prompt_config.name)
+        ttk.Entry(info_frame, textvariable=self.name_var, width=40).grid(row=0, column=1, sticky=tk.W+tk.E, padx=5, pady=5)
+
+        # 描述
+        ttk.Label(info_frame, text="描述:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        self.desc_var = tk.StringVar(value=self.prompt_config.description)
+        ttk.Entry(info_frame, textvariable=self.desc_var, width=40).grid(row=1, column=1, sticky=tk.W+tk.E, padx=5, pady=5)
+
+        # 配置网格权重
+        info_frame.grid_columnconfigure(1, weight=1)
+
+        # 创建笔记本控件（标签页）
+        notebook = ttk.Notebook(main_frame)
+        notebook.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+
+        # 系统提示词标签页
+        self.create_system_prompt_tab(notebook)
+
+        # 评估提示词标签页
+        self.create_evaluation_prompt_tab(notebook)
+
+        # 批量评估提示词标签页
+        self.create_batch_prompt_tab(notebook)
+
+        # 按钮框架
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(20, 0))
+
+        ttk.Button(button_frame, text="取消", command=self.cancel).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(button_frame, text="保存", command=self.save).pack(side=tk.RIGHT)
+
+    def create_system_prompt_tab(self, notebook):
+        """创建系统提示词标签页"""
+        frame = ttk.Frame(notebook)
+        notebook.add(frame, text="系统提示词")
+
+        # 说明
+        ttk.Label(frame, text="系统提示词定义AI的角色和基本行为规范:",
+                 font=("Arial", 10, "bold")).pack(anchor=tk.W, padx=5, pady=5)
+
+        # 文本编辑区域
+        text_frame = ttk.Frame(frame)
+        text_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        self.system_prompt_text = tk.Text(text_frame, wrap=tk.WORD, height=15, width=60)
+        system_scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=self.system_prompt_text.yview)
+        self.system_prompt_text.configure(yscrollcommand=system_scrollbar.set)
+
+        self.system_prompt_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        system_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # 插入现有内容
+        self.system_prompt_text.insert("1.0", self.prompt_config.system_prompt)
+
+    def create_evaluation_prompt_tab(self, notebook):
+        """创建评估提示词标签页"""
+        frame = ttk.Frame(notebook)
+        notebook.add(frame, text="评估提示词")
+
+        # 说明
+        ttk.Label(frame, text="评估提示词用于单篇文章的评估，支持变量: {title}, {summary}, {content_preview}",
+                 font=("Arial", 10, "bold")).pack(anchor=tk.W, padx=5, pady=5)
+
+        # 文本编辑区域
+        text_frame = ttk.Frame(frame)
+        text_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        self.eval_prompt_text = tk.Text(text_frame, wrap=tk.WORD, height=15, width=60)
+        eval_scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=self.eval_prompt_text.yview)
+        self.eval_prompt_text.configure(yscrollcommand=eval_scrollbar.set)
+
+        self.eval_prompt_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        eval_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # 插入现有内容
+        self.eval_prompt_text.insert("1.0", self.prompt_config.evaluation_prompt)
+
+    def create_batch_prompt_tab(self, notebook):
+        """创建批量评估提示词标签页"""
+        frame = ttk.Frame(notebook)
+        notebook.add(frame, text="批量评估提示词")
+
+        # 说明
+        ttk.Label(frame, text="批量评估提示词用于多篇文章的批量评估，支持变量: {articles_json}",
+                 font=("Arial", 10, "bold")).pack(anchor=tk.W, padx=5, pady=5)
+
+        # 文本编辑区域
+        text_frame = ttk.Frame(frame)
+        text_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        self.batch_prompt_text = tk.Text(text_frame, wrap=tk.WORD, height=15, width=60)
+        batch_scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=self.batch_prompt_text.yview)
+        self.batch_prompt_text.configure(yscrollcommand=batch_scrollbar.set)
+
+        self.batch_prompt_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        batch_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # 插入现有内容
+        self.batch_prompt_text.insert("1.0", self.prompt_config.batch_evaluation_prompt)
+
+    def save(self):
+        """保存提示词配置"""
+        name = self.name_var.get().strip()
+        if not name:
+            messagebox.showerror("错误", "请输入配置名称", parent=self.dialog)
+            return
+
+        # 创建新的提示词配置对象
+        new_config = AgentPromptConfig(
+            name=name,
+            description=self.desc_var.get().strip(),
+            system_prompt=self.system_prompt_text.get("1.0", tk.END).strip(),
+            evaluation_prompt=self.eval_prompt_text.get("1.0", tk.END).strip(),
+            batch_evaluation_prompt=self.batch_prompt_text.get("1.0", tk.END).strip(),
+            version="1.0"
+        )
+
+        self.result = new_config
+        self.dialog.destroy()
+
+    def cancel(self):
+        """取消编辑"""
+        self.dialog.destroy()

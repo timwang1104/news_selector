@@ -38,6 +38,29 @@ class AIEvaluation:
     reasoning: str             # 评估理由
     confidence: float          # 置信度 (0-1)
 
+    # AI AGENT增强信息
+    summary: str = ""          # AI生成的文章摘要
+    key_insights: List[str] = None    # 关键信息提取
+    highlights: List[str] = None      # 推荐亮点
+    tags: List[str] = None           # 相关标签
+    detailed_analysis: Dict[str, str] = None  # 详细分析 {维度: 分析内容}
+    recommendation_reason: str = ""   # 推荐理由
+    risk_assessment: str = ""        # 风险评估
+    implementation_suggestions: List[str] = None  # 实施建议
+
+    def __post_init__(self):
+        """初始化默认值"""
+        if self.key_insights is None:
+            self.key_insights = []
+        if self.highlights is None:
+            self.highlights = []
+        if self.tags is None:
+            self.tags = []
+        if self.detailed_analysis is None:
+            self.detailed_analysis = {}
+        if self.implementation_suggestions is None:
+            self.implementation_suggestions = []
+
 
 @dataclass
 class AIFilterResult:
