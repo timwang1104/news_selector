@@ -86,15 +86,26 @@ class VolcengineClient:
             logger.error(f"AI evaluation failed for article {article.id}: {e}")
             return self._fallback_evaluation(article)
 
+    def batch_evaluate(self, articles: List[NewsArticle]) -> List[AIEvaluation]:
+        """批量评估文章 - 标准接口"""
+        results = self.evaluate_articles_batch(articles)
+        # 过滤掉 None 结果，确保返回有效的评估结果
+        return [result for result in results if result is not None]
+
     def evaluate_articles_batch(self, articles: List[NewsArticle]) -> List[Optional[AIEvaluation]]:
         """批量评估文章"""
         try:
+            print(f"🔥 Volcengine批量评估: {len(articles)} 篇文章")
             prompt = self._build_batch_evaluation_prompt(articles)
             response = self._call_volcengine_api(prompt)
-            return self._parse_batch_ai_response(response, len(articles))
+            results = self._parse_batch_ai_response(response, len(articles))
+            print(f"✅ Volcengine评估完成: 获得 {len([r for r in results if r])} 个有效结果")
+            return results
         except Exception as e:
+            print(f"❌ Volcengine批量评估失败: {e}")
             logger.error(f"Batch AI evaluation failed: {e}")
             # 返回降级评估结果
+            print(f"🔄 降级到降级评估")
             return [self._fallback_evaluation(article) for article in articles]
 
     def _call_volcengine_api(self, prompt: str) -> str:

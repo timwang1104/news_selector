@@ -15,11 +15,12 @@ from ..models.rss import RSSFeed
 class RSSManager:
     """RSS管理界面"""
 
-    def __init__(self, parent_frame: ttk.Frame, article_callback=None, auth=None):
+    def __init__(self, parent_frame: ttk.Frame, article_callback=None, auth=None, subscription_callback=None):
         self.parent_frame = parent_frame
         self.custom_rss_service = CustomRSSService()
         self.article_callback = article_callback  # 回调函数，用于通知主窗口更新文章列表
         self.auth = auth  # 认证信息
+        self.subscription_callback = subscription_callback  # 回调函数，用于通知主窗口订阅源选择变化
 
         # 数据
         self.current_rss_feeds: List[RSSFeed] = []
@@ -43,6 +44,16 @@ class RSSManager:
 
         # 标题
         ttk.Label(main_frame, text="RSS订阅源", font=("Arial", 12, "bold")).pack(pady=(0, 5))
+
+        # 使用提示
+        tip_frame = ttk.Frame(main_frame)
+        tip_frame.pack(fill=tk.X, pady=(0, 5))
+
+        tip_label = ttk.Label(tip_frame,
+                             text="💡 提示：选择RSS订阅源后，在右侧文章列表中右键点击文章进行筛选测试",
+                             font=("Arial", 9),
+                             foreground="gray")
+        tip_label.pack(anchor=tk.W)
 
         # 工具栏
         toolbar = ttk.Frame(main_frame)
@@ -209,6 +220,10 @@ class RSSManager:
         """RSS订阅源选择事件"""
         selection = self.feed_tree.selection()
         if not selection:
+            self.selected_feed = None
+            # 通知主窗口清除订阅源选择
+            if self.subscription_callback:
+                self.subscription_callback(None)
             return
 
         item = selection[0]
@@ -221,6 +236,9 @@ class RSSManager:
         for feed in self.current_rss_feeds:
             if feed.title == feed_title:
                 self.selected_feed = feed
+                # 通过回调通知主窗口更新订阅源选择
+                if self.subscription_callback:
+                    self.subscription_callback(feed)
                 # 通过回调通知主窗口更新文章列表
                 if self.article_callback:
                     self.article_callback(feed.articles, f"RSS: {feed.title}")

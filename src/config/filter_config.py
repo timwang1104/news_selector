@@ -114,6 +114,14 @@ class FilterConfigManager:
                 # 更新关键词配置
                 if "keyword" in saved_configs:
                     keyword_data = saved_configs["keyword"]
+
+                    # 如果保存的关键词配置为空，使用默认配置
+                    if not keyword_data.get("keywords") or not keyword_data.get("weights"):
+                        print("⚠️  检测到空的关键词配置，使用默认关键词配置")
+                        from .default_keywords import INTERNATIONAL_TECH_KEYWORDS
+                        keyword_data["keywords"] = {k: v["keywords"] for k, v in INTERNATIONAL_TECH_KEYWORDS.items()}
+                        keyword_data["weights"] = {k: v["weight"] for k, v in INTERNATIONAL_TECH_KEYWORDS.items()}
+
                     self.configs["keyword"] = KeywordConfig(**keyword_data)
 
                 print(f"✅ 已加载筛选配置: {self.config_file}")

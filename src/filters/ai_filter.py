@@ -28,17 +28,33 @@ class AIFilter(BaseFilter):
         if not articles:
             return []
 
+        print(f"🤖 AI筛选开始: 准备处理 {len(articles)} 篇文章")
+        for i, article in enumerate(articles):
+            print(f"   待筛选文章{i+1}: {article.title}")
+
         # 限制处理数量
         if len(articles) > self.config.max_requests:
             logger.warning(f"Too many articles ({len(articles)}), limiting to {self.config.max_requests}")
+            print(f"⚠️  文章数量超限，限制为前 {self.config.max_requests} 篇")
             articles = articles[:self.config.max_requests]
 
         results = []
 
         # 批量处理
-        for batch in self._create_batches(articles, self.config.batch_size):
+        for batch_num, batch in enumerate(self._create_batches(articles, self.config.batch_size)):
+            print(f"🔄 处理第 {batch_num + 1} 批: {len(batch)} 篇文章")
             batch_results = self._process_batch(batch)
             results.extend(batch_results)
+
+        # 调试信息：显示所有评分
+        print(f"🔍 AI筛选详情: 总共处理 {len(articles)} 篇文章，获得 {len(results)} 个有效结果")
+        if results:
+            scores = [r.evaluation.total_score for r in results]
+            print(f"📊 AI评分分布: 最高={max(scores):.1f}, 最低={min(scores):.1f}, 平均={sum(scores)/len(scores):.1f}")
+            for i, result in enumerate(results[:5]):  # 显示前5个结果
+                print(f"   #{i+1}: 分数={result.evaluation.total_score:.1f}, 标题={result.article.title[:50]}...")
+        else:
+            print(f"⚠️  AI筛选无有效结果: 可能是API调用失败或所有文章评分过低")
 
         # 按总分排序，取评分最高的前N条
         results.sort(key=lambda x: x.evaluation.total_score, reverse=True)
@@ -47,6 +63,7 @@ class AIFilter(BaseFilter):
         max_selected = getattr(self.config, 'max_selected', 3)  # 默认3条
         selected_results = results[:max_selected]
 
+        print(f"✅ AI筛选最终结果: 选择了前 {len(selected_results)} 条评分最高的文章")
         logger.info(f"AI筛选完成: 处理了{len(results)}篇文章，选择了前{len(selected_results)}条评分最高的文章")
 
         return selected_results
@@ -169,16 +186,21 @@ class AIFilter(BaseFilter):
         # 批量评估未缓存的文章
         uncached_results = []
         if uncached_articles:
+            print(f"🤖 开始AI批量评估: {len(uncached_articles)} 篇文章")
             try:
                 start_time = time.time()
                 evaluations = self.client.batch_evaluate(uncached_articles)
                 processing_time = time.time() - start_time
-                
-                for article, evaluation in zip(uncached_articles, evaluations):
+
+                print(f"✅ AI批量评估完成: 耗时 {processing_time:.2f}s, 获得 {len(evaluations)} 个评估结果")
+
+                for i, (article, evaluation) in enumerate(zip(uncached_articles, evaluations)):
+                    print(f"   文章{i+1}: 分数={evaluation.total_score:.1f}, 置信度={evaluation.confidence:.2f}, 标题={article.title[:40]}...")
+
                     # 缓存结果
                     if self.cache and evaluation.confidence >= self.config.min_confidence:
                         self.cache.set(article, evaluation)
-                    
+
                     uncached_results.append(AIFilterResult(
                         article=article,
                         evaluation=evaluation,
@@ -186,19 +208,24 @@ class AIFilter(BaseFilter):
                         ai_model=self.config.model_name,
                         cached=False
                     ))
-                
+
                 self.metrics.record_processing_time(processing_time * 1000)
-                
+
             except AIClientError as e:
                 self.metrics.record_error()
+                print(f"❌ AI批量评估失败: {e}")
                 logger.error(f"Batch AI evaluation failed: {e}")
-                
+
                 # 降级策略
                 if self.config.fallback_enabled:
+                    print(f"🔄 启用降级策略")
                     for article in uncached_articles:
                         fallback_result = self._fallback_filter(article, time.time())
                         if fallback_result:
                             uncached_results.append(fallback_result)
+            except Exception as e:
+                print(f"❌ AI评估异常: {e}")
+                logger.error(f"AI evaluation exception: {e}")
         
         return cached_results + uncached_results
     

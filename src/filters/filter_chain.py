@@ -113,9 +113,16 @@ class FilterChain:
             
             # 第二步：AI筛选
             ai_results = []
+            print(f"🔍 综合筛选检查: enable_ai_filter={self.config.enable_ai_filter}, keyword_results={len(keyword_results)}")
             if self.config.enable_ai_filter and keyword_results:
+                print(f"🤖 开始执行AI筛选: {len(keyword_results)} 篇关键词筛选结果")
                 ai_results = self._execute_ai_filter(keyword_results, result)
+                print(f"✅ AI筛选完成: {len(ai_results)} 篇文章通过")
                 logger.info(f"AI filter completed: {len(ai_results)} articles passed")
+            elif not self.config.enable_ai_filter:
+                print("⚠️  AI筛选已禁用")
+            elif not keyword_results:
+                print("⚠️  关键词筛选无结果，跳过AI筛选")
             
             # 第三步：结果整合
             final_results = self._combine_results(keyword_results, ai_results)

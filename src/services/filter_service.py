@@ -34,9 +34,24 @@ class FilterService:
     def ai_filter(self) -> AIFilter:
         """获取AI筛选器"""
         if self._ai_filter is None:
-            config = self.config_manager.get_ai_config()
-            self._ai_filter = AIFilter(config)
+            try:
+                config = self.config_manager.get_ai_config()
+                print(f"🔧 初始化AI筛选器: model={config.model_name}, api_key={'***' if config.api_key else 'None'}")
+                self._ai_filter = AIFilter(config)
+                print(f"✅ AI筛选器初始化成功")
+            except Exception as e:
+                print(f"❌ AI筛选器初始化失败: {e}")
+                # 创建一个空的AI筛选器以避免崩溃
+                from ..config.filter_config import AIFilterConfig
+                fallback_config = AIFilterConfig()
+                self._ai_filter = AIFilter(fallback_config)
         return self._ai_filter
+
+    def reset_ai_filter(self):
+        """重置AI筛选器缓存"""
+        print(f"🔄 重置AI筛选器缓存")
+        self._ai_filter = None
+        self._filter_chain = None
     
     @property
     def filter_chain(self) -> FilterChain:
@@ -69,13 +84,17 @@ class FilterService:
             return FilterChainResult(total_articles=0, processing_start_time=None)
         
         logger.info(f"Starting {filter_type} filtering for {len(articles)} articles")
-        
+        print(f"🎯 FilterService.filter_articles: filter_type='{filter_type}', articles={len(articles)}")
+
         try:
             if filter_type == "keyword":
+                print(f"📝 执行关键词筛选")
                 return self._keyword_only_filter(articles, callback)
             elif filter_type == "ai":
+                print(f"🤖 执行AI筛选")
                 return self._ai_only_filter(articles, callback)
             elif filter_type == "chain":
+                print(f"🔗 执行综合筛选 (关键词+AI)")
                 if callback:
                     return self.filter_chain.process_with_callback(articles, callback)
                 else:

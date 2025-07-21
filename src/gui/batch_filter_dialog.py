@@ -21,7 +21,7 @@ class BatchFilterDialog:
         self.max_subscriptions_var = tk.StringVar(value="")
 
         self.articles_per_sub_var = tk.StringVar(value="20")
-        self.filter_type_var = tk.StringVar(value="keyword")
+        self.filter_type_var = tk.StringVar(value="chain")
         self.enable_parallel_var = tk.BooleanVar(value=True)
         self.max_workers_var = tk.StringVar(value="3")
         self.min_score_var = tk.StringVar(value="0.6")
@@ -143,7 +143,7 @@ class BatchFilterDialog:
         filter_frame.grid(row=0, column=1, columnspan=2, sticky=tk.W, padx=(10, 0))
         
         ttk.Radiobutton(filter_frame, text="关键词筛选", variable=self.filter_type_var, value="keyword").pack(side=tk.LEFT)
-        ttk.Radiobutton(filter_frame, text="AI筛选", variable=self.filter_type_var, value="ai").pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Radiobutton(filter_frame, text="智能筛选", variable=self.filter_type_var, value="ai").pack(side=tk.LEFT, padx=(10, 0))
         ttk.Radiobutton(filter_frame, text="综合筛选", variable=self.filter_type_var, value="chain").pack(side=tk.LEFT, padx=(10, 0))
         
         # 最小分数阈值
@@ -266,7 +266,7 @@ class BatchFilterDialog:
         self.max_subscriptions_var.set("")
 
         self.articles_per_sub_var.set("20")
-        self.filter_type_var.set("keyword")
+        self.filter_type_var.set("chain")
         self.enable_parallel_var.set(True)
         self.max_workers_var.set("3")
         self.min_score_var.set("0.6")

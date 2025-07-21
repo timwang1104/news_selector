@@ -39,6 +39,7 @@ class MainWindow:
         self.filtered_articles: List[NewsArticle] = []  # 筛选后的文章
         self.filter_result = None  # 筛选结果
         self.display_mode = "all"  # 显示模式: "all" 或 "filtered"
+        self.selected_subscription = None  # 当前选中的订阅源
         
         # 同步Agent配置到FilterService
         self.sync_agent_config_on_startup()
@@ -62,6 +63,8 @@ class MainWindow:
                     model_name=current_config.api_config.model_name,
                     base_url=current_config.api_config.base_url
                 )
+                # 重置AI筛选器缓存以使用新配置
+                filter_service.reset_ai_filter()
                 print(f"✅ 启动时已同步Agent配置 '{current_config.config_name}' 到FilterService")
             else:
                 print("⚠️  启动时没有找到有效的Agent配置")
@@ -202,13 +205,9 @@ class MainWindow:
         filter_buttons_frame = ttk.Frame(filter_action_frame)
         filter_buttons_frame.pack(side=tk.LEFT)
 
-        # 快速筛选按钮
-        ttk.Button(filter_buttons_frame, text="关键词筛选",
-                  command=lambda: self.quick_filter("keyword")).pack(side=tk.LEFT, padx=(0, 2))
-        ttk.Button(filter_buttons_frame, text="AI筛选",
-                  command=lambda: self.quick_filter("ai")).pack(side=tk.LEFT, padx=(0, 2))
-        ttk.Button(filter_buttons_frame, text="智能筛选",
-                  command=lambda: self.quick_filter("chain")).pack(side=tk.LEFT, padx=(0, 5))
+        # 统一筛选按钮
+        ttk.Button(filter_buttons_frame, text="筛选",
+                  command=self.show_filter_dialog).pack(side=tk.LEFT, padx=(0, 5))
 
         # 显示所有文章按钮
         ttk.Button(filter_action_frame, text="显示全部", command=self.show_all_articles).pack(side=tk.LEFT, padx=(5, 0))
@@ -238,7 +237,7 @@ class MainWindow:
         list_frame.pack(fill=tk.BOTH, expand=True)
         
         # 创建Treeview用于显示文章
-        columns = ("title", "feed", "date", "status", "score", "ai_summary", "ai_tags")
+        columns = ("title", "feed", "date", "status", "ai_score", "final_score", "ai_summary", "ai_tags")
         self.article_tree = ttk.Treeview(list_frame, columns=columns, show="headings")
 
         # 设置列
@@ -246,15 +245,17 @@ class MainWindow:
         self.article_tree.heading("feed", text="来源")
         self.article_tree.heading("date", text="日期")
         self.article_tree.heading("status", text="状态")
-        self.article_tree.heading("score", text="筛选分数")
+        self.article_tree.heading("ai_score", text="AI分数")
+        self.article_tree.heading("final_score", text="综合分数")
         self.article_tree.heading("ai_summary", text="AI摘要")
         self.article_tree.heading("ai_tags", text="AI标签")
 
-        self.article_tree.column("title", width=300)
+        self.article_tree.column("title", width=280)
         self.article_tree.column("feed", width=100)
         self.article_tree.column("date", width=100)
         self.article_tree.column("status", width=80)
-        self.article_tree.column("score", width=80)
+        self.article_tree.column("ai_score", width=70)
+        self.article_tree.column("final_score", width=80)
         self.article_tree.column("ai_summary", width=200)
         self.article_tree.column("ai_tags", width=150)
         
@@ -267,6 +268,9 @@ class MainWindow:
         
         # 绑定双击事件
         self.article_tree.bind("<Double-1>", self.on_article_double_click)
+
+        # 绑定右键菜单
+        self.article_tree.bind("<Button-3>", self.show_article_context_menu)
         
         # 右键菜单
         self.create_article_context_menu()
@@ -495,7 +499,8 @@ class MainWindow:
                 article.feed_title or "未知",
                 article.published.strftime("%m-%d %H:%M"),
                 status_text,
-                "",  # 普通文章没有筛选分数
+                "",  # 普通文章没有AI分数
+                "",  # 普通文章没有综合分数
                 "",  # 普通文章没有AI摘要
                 ""   # 普通文章没有AI标签
             ))
@@ -576,6 +581,7 @@ class MainWindow:
         """订阅源选择事件"""
         selection = self.subscription_tree.selection()
         if not selection:
+            self.selected_subscription = None
             return
 
         # 获取选中的订阅源
@@ -590,6 +596,7 @@ class MainWindow:
                 break
 
         if selected_subscription:
+            self.selected_subscription = selected_subscription  # 保存当前选中的订阅源
             self.load_subscription_articles(selected_subscription)
 
     def load_subscription_articles(self, subscription: Subscription):
@@ -608,6 +615,275 @@ class MainWindow:
                 self.root.after(0, lambda: messagebox.showerror("错误", f"加载文章失败: {e}"))
 
         threading.Thread(target=load_articles, daemon=True).start()
+
+    def show_article_context_menu(self, event):
+        """显示文章右键菜单"""
+        # 选择点击的项目
+        item = self.article_tree.identify_row(event.y)
+        if item:
+            self.article_tree.selection_set(item)
+
+            # 创建右键菜单
+            context_menu = tk.Menu(self.root, tearoff=0)
+            context_menu.add_command(label="🧪 测试筛选", command=self.test_single_article_filter)
+            context_menu.add_separator()
+            context_menu.add_command(label="📖 查看详情", command=lambda: self.on_article_double_click(None))
+            context_menu.add_command(label="🌐 打开原文", command=self.open_article_url)
+
+            # 显示菜单
+            try:
+                context_menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                context_menu.grab_release()
+
+    def test_single_article_filter(self):
+        """测试单条文章的筛选"""
+        selection = self.article_tree.selection()
+        if not selection:
+            messagebox.showwarning("警告", "请先选择要测试的文章")
+            return
+
+        # 获取选中的文章
+        item_index = self.article_tree.index(selection[0])
+
+        # 根据当前显示模式获取文章
+        if self.display_mode == "filtered" and self.filtered_articles:
+            if item_index < len(self.filtered_articles):
+                article = self.filtered_articles[item_index]
+            else:
+                messagebox.showerror("错误", "无法获取选中的文章")
+                return
+        else:
+            displayed_articles = self.get_displayed_articles()
+            if item_index < len(displayed_articles):
+                article = displayed_articles[item_index]
+            else:
+                messagebox.showerror("错误", "无法获取选中的文章")
+                return
+
+        # 显示筛选类型选择对话框
+        self.show_single_article_filter_dialog(article)
+
+    def show_single_article_filter_dialog(self, article):
+        """显示单条文章筛选对话框"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("单条文章筛选测试")
+        dialog.geometry("500x400")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # 居中显示
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+        y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
+
+        main_frame = ttk.Frame(dialog)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+        # 文章信息
+        info_frame = ttk.LabelFrame(main_frame, text="文章信息", padding="10")
+        info_frame.pack(fill=tk.X, pady=(0, 15))
+
+        ttk.Label(info_frame, text="标题:", font=("", 10, "bold")).pack(anchor=tk.W)
+        title_label = ttk.Label(info_frame, text=article.title, wraplength=450)
+        title_label.pack(anchor=tk.W, pady=(0, 10))
+
+        ttk.Label(info_frame, text="来源:", font=("", 10, "bold")).pack(anchor=tk.W)
+        ttk.Label(info_frame, text=article.feed_title or "未知").pack(anchor=tk.W, pady=(0, 10))
+
+        ttk.Label(info_frame, text="发布时间:", font=("", 10, "bold")).pack(anchor=tk.W)
+        ttk.Label(info_frame, text=article.published.strftime("%Y-%m-%d %H:%M:%S")).pack(anchor=tk.W)
+
+        # 筛选类型选择
+        filter_frame = ttk.LabelFrame(main_frame, text="筛选类型", padding="10")
+        filter_frame.pack(fill=tk.X, pady=(0, 15))
+
+        filter_type_var = tk.StringVar(value="chain")
+        ttk.Radiobutton(filter_frame, text="关键词筛选", variable=filter_type_var, value="keyword").pack(anchor=tk.W)
+        ttk.Radiobutton(filter_frame, text="AI智能筛选", variable=filter_type_var, value="ai").pack(anchor=tk.W)
+        ttk.Radiobutton(filter_frame, text="综合筛选（推荐）", variable=filter_type_var, value="chain").pack(anchor=tk.W)
+
+        # 按钮
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(20, 0))
+
+        def start_test():
+            filter_type = filter_type_var.get()
+            dialog.destroy()
+            self.execute_single_article_filter(article, filter_type)
+
+        ttk.Button(button_frame, text="开始测试", command=start_test).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(button_frame, text="取消", command=dialog.destroy).pack(side=tk.RIGHT)
+
+    def open_article_url(self):
+        """打开文章原文链接"""
+        selection = self.article_tree.selection()
+        if not selection:
+            messagebox.showwarning("警告", "请先选择要打开的文章")
+            return
+
+        # 获取选中的文章
+        item_index = self.article_tree.index(selection[0])
+
+        # 根据当前显示模式获取文章
+        if self.display_mode == "filtered" and self.filtered_articles:
+            if item_index < len(self.filtered_articles):
+                article = self.filtered_articles[item_index]
+            else:
+                messagebox.showerror("错误", "无法获取选中的文章")
+                return
+        else:
+            displayed_articles = self.get_displayed_articles()
+            if item_index < len(displayed_articles):
+                article = displayed_articles[item_index]
+            else:
+                messagebox.showerror("错误", "无法获取选中的文章")
+                return
+
+        # 打开链接
+        if article.url:
+            import webbrowser
+            webbrowser.open(article.url)
+        else:
+            messagebox.showwarning("警告", "该文章没有可用的链接")
+
+    def execute_single_article_filter(self, article, filter_type):
+        """执行单条文章筛选"""
+        try:
+            self.update_status(f"正在测试筛选文章: {article.title[:50]}...")
+
+            # 创建筛选服务
+            from ..services.filter_service import FilterService
+            filter_service = FilterService()
+
+            # 执行筛选
+            result = filter_service.filter_articles([article], filter_type)
+
+            # 显示结果
+            self.show_single_article_filter_result(article, result, filter_type)
+
+        except Exception as e:
+            messagebox.showerror("错误", f"筛选测试失败: {e}")
+            self.update_status("筛选测试失败")
+
+    def show_single_article_filter_result(self, article, result, filter_type):
+        """显示单条文章筛选结果"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("筛选测试结果")
+        dialog.geometry("700x600")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # 居中显示
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+        y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
+
+        main_frame = ttk.Frame(dialog)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+        # 创建滚动框架
+        canvas = tk.Canvas(main_frame)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # 文章信息
+        info_frame = ttk.LabelFrame(scrollable_frame, text="文章信息", padding="10")
+        info_frame.pack(fill=tk.X, pady=(0, 15))
+
+        ttk.Label(info_frame, text="标题:", font=("", 10, "bold")).pack(anchor=tk.W)
+        title_label = ttk.Label(info_frame, text=article.title, wraplength=650)
+        title_label.pack(anchor=tk.W, pady=(0, 5))
+
+        ttk.Label(info_frame, text="来源:", font=("", 10, "bold")).pack(anchor=tk.W)
+        ttk.Label(info_frame, text=article.feed_title or "未知").pack(anchor=tk.W, pady=(0, 5))
+
+        # 筛选结果
+        result_frame = ttk.LabelFrame(scrollable_frame, text=f"筛选结果 ({filter_type})", padding="10")
+        result_frame.pack(fill=tk.X, pady=(0, 15))
+
+        if result.selected_articles:
+            combined_result = result.selected_articles[0]
+
+            # 基本结果
+            ttk.Label(result_frame, text="筛选结果: ✅ 通过", font=("", 10, "bold"), foreground="green").pack(anchor=tk.W)
+            ttk.Label(result_frame, text=f"综合分数: {combined_result.final_score:.3f}", font=("", 10, "bold")).pack(anchor=tk.W, pady=(5, 0))
+
+            # 关键词筛选结果
+            if combined_result.keyword_result:
+                keyword_frame = ttk.LabelFrame(result_frame, text="关键词筛选结果", padding="10")
+                keyword_frame.pack(fill=tk.X, pady=(10, 0))
+
+                ttk.Label(keyword_frame, text=f"相关性分数: {combined_result.keyword_result.relevance_score:.3f}").pack(anchor=tk.W)
+                ttk.Label(keyword_frame, text=f"匹配关键词数: {len(combined_result.keyword_result.matched_keywords)}").pack(anchor=tk.W)
+
+                if combined_result.keyword_result.matched_keywords:
+                    ttk.Label(keyword_frame, text="匹配的关键词:", font=("", 9, "bold")).pack(anchor=tk.W, pady=(5, 0))
+                    for match in combined_result.keyword_result.matched_keywords[:5]:  # 显示前5个
+                        ttk.Label(keyword_frame, text=f"  • {match.keyword} ({match.category})", font=("", 9)).pack(anchor=tk.W)
+
+            # AI筛选结果
+            if combined_result.ai_result:
+                ai_frame = ttk.LabelFrame(result_frame, text="AI筛选结果", padding="10")
+                ai_frame.pack(fill=tk.X, pady=(10, 0))
+
+                evaluation = combined_result.ai_result.evaluation
+                ttk.Label(ai_frame, text=f"AI总分: {evaluation.total_score}/30", font=("", 10, "bold")).pack(anchor=tk.W)
+                ttk.Label(ai_frame, text=f"政策相关性: {evaluation.relevance_score}/10").pack(anchor=tk.W)
+                ttk.Label(ai_frame, text=f"创新影响: {evaluation.innovation_impact}/10").pack(anchor=tk.W)
+                ttk.Label(ai_frame, text=f"实用性: {evaluation.practicality}/10").pack(anchor=tk.W)
+                ttk.Label(ai_frame, text=f"置信度: {evaluation.confidence:.2f}").pack(anchor=tk.W)
+
+                if evaluation.summary:
+                    ttk.Label(ai_frame, text="AI摘要:", font=("", 9, "bold")).pack(anchor=tk.W, pady=(10, 0))
+                    summary_label = ttk.Label(ai_frame, text=evaluation.summary, wraplength=600, font=("", 9))
+                    summary_label.pack(anchor=tk.W, pady=(0, 5))
+
+                if evaluation.reasoning:
+                    ttk.Label(ai_frame, text="评估理由:", font=("", 9, "bold")).pack(anchor=tk.W, pady=(5, 0))
+                    reasoning_label = ttk.Label(ai_frame, text=evaluation.reasoning, wraplength=600, font=("", 9))
+                    reasoning_label.pack(anchor=tk.W, pady=(0, 5))
+
+                if evaluation.tags:
+                    ttk.Label(ai_frame, text="相关标签:", font=("", 9, "bold")).pack(anchor=tk.W, pady=(5, 0))
+                    ttk.Label(ai_frame, text=", ".join(evaluation.tags), font=("", 9)).pack(anchor=tk.W)
+        else:
+            ttk.Label(result_frame, text="筛选结果: ❌ 未通过", font=("", 10, "bold"), foreground="red").pack(anchor=tk.W)
+            if result.rejected_articles:
+                rejected_result = result.rejected_articles[0]
+                if rejected_result.rejection_reason:
+                    ttk.Label(result_frame, text=f"拒绝原因: {rejected_result.rejection_reason}").pack(anchor=tk.W, pady=(5, 0))
+
+        # 性能统计
+        perf_frame = ttk.LabelFrame(scrollable_frame, text="性能统计", padding="10")
+        perf_frame.pack(fill=tk.X, pady=(0, 15))
+
+        ttk.Label(perf_frame, text=f"总处理时间: {result.total_processing_time:.2f}秒").pack(anchor=tk.W)
+        if hasattr(result, 'keyword_filter_time'):
+            ttk.Label(perf_frame, text=f"关键词筛选时间: {result.keyword_filter_time:.2f}秒").pack(anchor=tk.W)
+        if hasattr(result, 'ai_filter_time'):
+            ttk.Label(perf_frame, text=f"AI筛选时间: {result.ai_filter_time:.2f}秒").pack(anchor=tk.W)
+
+        # 配置滚动
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # 关闭按钮
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+        ttk.Button(button_frame, text="关闭", command=dialog.destroy).pack(side=tk.RIGHT)
+
+        self.update_status("筛选测试完成")
 
     def on_article_double_click(self, event):
         """文章双击事件"""
@@ -992,7 +1268,166 @@ class MainWindow:
         print(f"📋 获取显示文章: {filter_type} ({len(displayed_articles)} 篇)")
         return displayed_articles
 
-    def batch_filter_articles(self):
+    def show_filter_dialog(self):
+        """显示筛选对话框"""
+        try:
+            # 导入筛选对话框
+            from .filter_dialog import FilterDialog
+
+            # 创建并显示筛选对话框
+            dialog = FilterDialog(self.root, self)
+            result = dialog.show()
+
+            if result:
+                if result["mode"] == "batch":
+                    # 批量筛选模式 - 传递筛选类型
+                    self.batch_filter_articles(result["filter_type"])
+                else:
+                    # 单个订阅源筛选模式
+                    self.filter_single_subscription(result["subscription"], result["filter_type"])
+
+        except ImportError:
+            messagebox.showerror("错误", "筛选功能模块未找到")
+        except Exception as e:
+            messagebox.showerror("错误", f"启动筛选失败: {e}")
+
+    def filter_single_subscription(self, subscription, filter_type):
+        """筛选单个订阅源"""
+        try:
+            # 检查是否是RSS订阅源
+            if subscription.id.startswith("rss_"):
+                # RSS订阅源处理
+                self.update_status(f"正在获取RSS订阅源 {subscription.title} 的文章...")
+
+                # 从RSS管理器获取文章
+                if hasattr(self, 'rss_manager') and self.rss_manager.selected_feed:
+                    rss_feed = self.rss_manager.selected_feed
+                    rss_articles = rss_feed.articles
+
+                    if not rss_articles:
+                        messagebox.showinfo("提示", f"RSS订阅源 {subscription.title} 没有可筛选的文章")
+                        return
+
+                    # 将RSS文章转换为NewsArticle格式
+                    from ..models.news import NewsArticle, NewsAuthor
+                    articles = []
+                    for rss_article in rss_articles:
+                        if not rss_article.is_read:  # 只处理未读文章
+                            news_article = NewsArticle(
+                                id=rss_article.id,
+                                title=rss_article.title,
+                                summary=rss_article.summary or "",
+                                content=rss_article.content or rss_article.summary or "",
+                                url=rss_article.url,
+                                published=rss_article.published,
+                                updated=rss_article.published,  # RSS文章通常没有更新时间，使用发布时间
+                                author=NewsAuthor(name=rss_article.author or "未知作者") if rss_article.author else None,
+                                categories=[],
+                                is_read=rss_article.is_read,
+                                is_starred=False,
+                                feed_title=rss_feed.title
+                            )
+                            articles.append(news_article)
+                else:
+                    messagebox.showwarning("警告", "无法获取RSS订阅源文章")
+                    return
+            else:
+                # Inoreader订阅源处理
+                self.update_status(f"正在获取 {subscription.title} 的文章...")
+                articles = self.news_service.get_articles_by_feed(
+                    feed_id=subscription.id,
+                    count=50,  # 获取最近50篇文章
+                    exclude_read=True
+                )
+
+            if not articles:
+                messagebox.showinfo("提示", f"订阅源 {subscription.title} 没有可筛选的文章")
+                return
+
+            # 执行筛选
+            self.update_status(f"开始筛选 {subscription.title} 的 {len(articles)} 篇文章...")
+            self.quick_filter_with_articles(articles, filter_type)
+
+        except Exception as e:
+            messagebox.showerror("错误", f"筛选订阅源失败: {e}")
+
+    def quick_filter_with_articles(self, articles, filter_type):
+        """使用指定文章列表进行筛选"""
+        # 更新筛选类型选择器
+        self.filter_type_var.set(filter_type)
+
+        # 显示筛选类型说明
+        filter_descriptions = {
+            "keyword": "使用关键词快速筛选，速度快，适合大批量处理",
+            "ai": "使用AI智能评估，准确度高，适合精准筛选",
+            "chain": "关键词+AI综合筛选，平衡速度和准确性"
+        }
+
+        description = filter_descriptions.get(filter_type, "")
+
+        # 显示确认对话框（仅对AI筛选，因为消耗资源）
+        if filter_type == "ai":
+            confirm_msg = f"将对 {len(articles)} 篇文章进行智能筛选。\n\n{description}\n\n是否继续？"
+            if not messagebox.askyesno("确认智能筛选", confirm_msg):
+                return
+
+        # 筛选类型显示名称
+        filter_type_names = {
+            "keyword": "关键词筛选",
+            "ai": "智能筛选",
+            "chain": "综合筛选"
+        }
+        filter_name = filter_type_names.get(filter_type, filter_type)
+
+        self.update_status(f"开始{filter_name}: {len(articles)}篇文章")
+
+        # 显示进度对话框并执行筛选
+        progress_dialog = FilterProgressDialog(
+            self.root,
+            articles,
+            filter_type
+        )
+
+        # 获取筛选结果
+        if progress_dialog.result and not progress_dialog.cancelled:
+            self.filter_result = progress_dialog.result
+
+            # 安全地提取文章对象
+            self.filtered_articles = []
+            for r in self.filter_result.selected_articles:
+                try:
+                    if hasattr(r, 'article'):
+                        # CombinedFilterResult 对象
+                        self.filtered_articles.append(r.article)
+                    elif hasattr(r, 'title'):
+                        # 直接是 NewsArticle 对象
+                        self.filtered_articles.append(r)
+                    else:
+                        print(f"⚠️ 未知的筛选结果类型: {type(r)}")
+                        print(f"   对象属性: {dir(r)}")
+                except Exception as e:
+                    print(f"❌ 提取文章对象失败: {e}")
+                    print(f"   结果对象类型: {type(r)}")
+                    continue
+
+            print(f"✅ 成功提取 {len(self.filtered_articles)} 篇筛选文章")
+            self.display_mode = "filtered"
+
+            # 启用筛选选项并切换到筛选视图
+            self.filtered_radio.config(state=tk.NORMAL)
+            self.filter_var.set("filtered")
+
+            # 更新文章列表显示
+            self.update_filtered_article_list()
+
+            # 显示筛选结果摘要
+            self.show_filter_summary()
+        elif progress_dialog.cancelled:
+            self.update_status("筛选已取消")
+        else:
+            self.update_status("筛选失败")
+
+    def batch_filter_articles(self, preset_filter_type=None):
         """批量筛选文章"""
         try:
             # 导入批量筛选对话框
@@ -1000,10 +1435,17 @@ class MainWindow:
 
             # 创建并显示批量筛选配置对话框
             dialog = BatchFilterDialog(self.root)
+
+            # 如果有预设的筛选类型，设置到对话框中
+            if preset_filter_type:
+                dialog.filter_type_var.set(preset_filter_type)
+                print(f"🔧 设置批量筛选类型为: {preset_filter_type}")
+
             result = dialog.show()
 
             if result:
                 # 用户确认了批量筛选配置，执行筛选
+                print(f"📋 批量筛选配置: 筛选类型={result.filter_type}")
                 self.execute_batch_filter(result)
 
         except ImportError:
@@ -1082,48 +1524,64 @@ class MainWindow:
                 batch_articles.append(article)
 
             if batch_articles:
-                # 询问用户是否要在主窗口中显示批量筛选结果
-                if messagebox.askyesno("集成结果",
-                                     f"是否要在主窗口中显示批量筛选的 {len(batch_articles)} 篇文章？\n"
-                                     "这将替换当前显示的文章列表。"):
+                print(f"🔄 开始集成批量筛选结果: {len(batch_articles)} 篇文章")
 
-                    # 更新当前文章列表
-                    self.current_articles = batch_articles
+                # 自动显示批量筛选结果（不再询问用户）
+                # 用户既然执行了批量筛选，就是想看到结果
 
-                    # 创建模拟的筛选结果
-                    from ..filters.base import FilterChainResult, CombinedFilterResult
-                    from datetime import datetime
+                # 更新当前文章列表
+                self.current_articles = batch_articles
 
-                    filter_result = FilterChainResult(
-                        total_articles=len(batch_articles),
-                        processing_start_time=result.processing_start_time,
-                        processing_end_time=result.processing_end_time,
-                        final_selected_count=len(batch_articles)
-                    )
+                # 创建模拟的筛选结果
+                from ..filters.base import FilterChainResult, CombinedFilterResult
+                from datetime import datetime
 
-                    # 转换为CombinedFilterResult格式
-                    combined_results = []
-                    for combined_result in result.all_selected_articles:
-                        combined_results.append(combined_result)
+                filter_result = FilterChainResult(
+                    total_articles=len(batch_articles),
+                    processing_start_time=result.processing_start_time,
+                    processing_end_time=result.processing_end_time,
+                    final_selected_count=len(batch_articles)
+                )
 
-                    filter_result.selected_articles = combined_results
+                # 转换为CombinedFilterResult格式
+                combined_results = []
+                for combined_result in result.all_selected_articles:
+                    combined_results.append(combined_result)
 
-                    # 设置筛选结果
-                    self.filtered_articles = combined_results
-                    self.filter_result = filter_result
+                filter_result.selected_articles = combined_results
 
-                    # 启用筛选结果选项
-                    self.filtered_radio.config(state=tk.NORMAL)
+                # 设置筛选结果 - 安全地提取文章对象
+                self.filtered_articles = []
+                for r in combined_results:
+                    try:
+                        if hasattr(r, 'article'):
+                            # CombinedFilterResult 对象
+                            self.filtered_articles.append(r.article)
+                        elif hasattr(r, 'title'):
+                            # 直接是 NewsArticle 对象
+                            self.filtered_articles.append(r)
+                        else:
+                            print(f"⚠️ 批量筛选结果未知类型: {type(r)}")
+                            continue
+                    except Exception as e:
+                        print(f"❌ 提取批量筛选文章失败: {e}")
+                        continue
 
-                    # 切换到筛选结果视图
-                    self.filter_var.set("filtered")
-                    self.display_mode = "filtered"
+                print(f"✅ 批量筛选成功提取 {len(self.filtered_articles)} 篇文章")
+                self.filter_result = filter_result
 
-                    # 更新文章列表显示
-                    self.update_filtered_article_list()
+                # 启用筛选结果选项
+                self.filtered_radio.config(state=tk.NORMAL)
 
-                    # 更新状态
-                    self.update_status(f"已显示批量筛选结果: {len(batch_articles)} 篇文章")
+                # 切换到筛选结果视图
+                self.filter_var.set("filtered")
+                self.display_mode = "filtered"
+
+                # 更新文章列表显示
+                self.update_filtered_article_list()
+
+                # 更新状态
+                self.update_status(f"已显示批量筛选结果: {len(self.filtered_articles)} 篇文章")
 
         except Exception as e:
             messagebox.showerror("错误", f"集成批量筛选结果失败: {e}")
@@ -1167,11 +1625,19 @@ class MainWindow:
 
         # 显示确认对话框（仅对AI筛选，因为消耗资源）
         if filter_type == "ai":
-            confirm_msg = f"将对{current_mode_desc}中的 {len(displayed_articles)} 篇文章进行AI筛选。\n\n{description}\n\n是否继续？"
-            if not messagebox.askyesno("确认AI筛选", confirm_msg):
+            confirm_msg = f"将对{current_mode_desc}中的 {len(displayed_articles)} 篇文章进行智能筛选。\n\n{description}\n\n是否继续？"
+            if not messagebox.askyesno("确认智能筛选", confirm_msg):
                 return
 
-        self.update_status(f"开始{filter_type}筛选: 从{current_mode_desc}({len(displayed_articles)}篇)中筛选")
+        # 筛选类型显示名称
+        filter_type_names = {
+            "keyword": "关键词筛选",
+            "ai": "智能筛选",
+            "chain": "综合筛选"
+        }
+        filter_name = filter_type_names.get(filter_type, filter_type)
+
+        self.update_status(f"开始{filter_name}: 从{current_mode_desc}({len(displayed_articles)}篇)中筛选")
 
         # 显示进度对话框并执行筛选
         progress_dialog = FilterProgressDialog(
@@ -1185,7 +1651,24 @@ class MainWindow:
 
         if progress_dialog.result and not progress_dialog.cancelled:
             self.filter_result = progress_dialog.result
-            self.filtered_articles = [r.article for r in self.filter_result.selected_articles]
+
+            # 安全地提取文章对象
+            self.filtered_articles = []
+            for r in self.filter_result.selected_articles:
+                try:
+                    if hasattr(r, 'article'):
+                        # CombinedFilterResult 对象
+                        self.filtered_articles.append(r.article)
+                    elif hasattr(r, 'title'):
+                        # 直接是 NewsArticle 对象
+                        self.filtered_articles.append(r)
+                    else:
+                        print(f"⚠️ 未知的筛选结果类型: {type(r)}")
+                        continue
+                except Exception as e:
+                    print(f"❌ 提取文章对象失败: {e}")
+                    continue
+
             self.display_mode = "filtered"  # 设置为筛选模式
 
             print(f"筛选成功，获得 {len(self.filtered_articles)} 篇文章")
@@ -1261,19 +1744,26 @@ class MainWindow:
                 status_text = f"[筛选] {status_text}"
 
                 # 获取筛选分数和AI分析信息
-                score_text = ""
+                ai_score_text = ""
+                final_score_text = ""
                 ai_summary = ""
                 ai_tags = ""
 
                 if self.filter_result and i < len(self.filter_result.selected_articles):
                     combined_result = self.filter_result.selected_articles[i]
-                    score_text = f"{combined_result.final_score:.3f}"
 
-                    # 获取AI分析信息
+                    # 显示AI分数
                     if combined_result.ai_result and combined_result.ai_result.evaluation:
+                        ai_score = combined_result.ai_result.evaluation.total_score
+                        ai_score_text = f"{ai_score}/30"
+
+                        # 获取AI分析信息
                         evaluation = combined_result.ai_result.evaluation
                         ai_summary = evaluation.summary[:50] + "..." if len(evaluation.summary) > 50 else evaluation.summary
                         ai_tags = ", ".join(evaluation.tags[:3])  # 显示前3个标签
+
+                    # 显示综合分数
+                    final_score_text = f"{combined_result.final_score:.3f}"
 
                 # 获取发布时间
                 try:
@@ -1292,7 +1782,8 @@ class MainWindow:
                     getattr(article, 'feed_title', None) or getattr(article, 'source', None) or "未知",
                     date_text,
                     status_text,
-                    score_text,
+                    ai_score_text,
+                    final_score_text,
                     ai_summary,
                     ai_tags
                 ))
@@ -1595,8 +2086,31 @@ AI筛选通过: {result.ai_filtered_count}
         rss_frame = ttk.Frame(self.subscription_notebook)
         self.subscription_notebook.add(rss_frame, text="自定义RSS")
 
-        # 创建RSS管理器，传入文章回调函数和认证信息
-        self.rss_manager = RSSManager(rss_frame, self.on_rss_articles_loaded, self.auth)
+        # 创建RSS管理器，传入文章回调函数、订阅源选择回调和认证信息
+        self.rss_manager = RSSManager(rss_frame, self.on_rss_articles_loaded, self.auth, self.on_rss_subscription_selected)
+
+    def on_rss_subscription_selected(self, rss_feed):
+        """处理RSS订阅源选择事件"""
+        # 将RSS订阅源转换为Subscription格式并设置为当前选中的订阅源
+        from ..models.subscription import Subscription
+
+        if rss_feed:
+            # 创建一个模拟的Subscription对象来兼容现有的筛选逻辑
+            subscription = Subscription(
+                id=f"rss_{rss_feed.id}",  # 添加前缀以区分RSS订阅源
+                title=rss_feed.title,
+                url=rss_feed.url,
+                html_url=rss_feed.link or rss_feed.url,
+                icon_url=None,
+                categories=[],
+                first_item_msec=None,
+                sort_id=None
+            )
+            self.selected_subscription = subscription
+            print(f"🔄 RSS订阅源已选中: {subscription.title}")
+        else:
+            self.selected_subscription = None
+            print("🔄 RSS订阅源选择已清除")
 
     def on_rss_articles_loaded(self, rss_articles, source_name):
         """处理RSS文章加载事件"""

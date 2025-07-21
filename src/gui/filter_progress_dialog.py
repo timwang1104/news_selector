@@ -4,7 +4,7 @@
 import tkinter as tk
 from tkinter import ttk
 import threading
-from ..services.filter_service import FilterService, CLIProgressCallback
+from ..services.filter_service import FilterService, CLIProgressCallback, filter_service
 
 
 class FilterProgressCallback(CLIProgressCallback):
@@ -343,7 +343,7 @@ class FilterProgressDialog:
         """开始筛选"""
         def filter_task():
             try:
-                filter_service = FilterService()
+                # 使用全局的filter_service实例，而不是创建新实例
                 callback = FilterProgressCallback(self, self.filter_type)
 
                 # 执行筛选
