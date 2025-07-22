@@ -17,7 +17,7 @@ from .login_dialog import LoginDialog
 from .filter_config_dialog import FilterConfigDialog
 from .filter_progress_dialog import FilterProgressDialog, FilterMetricsDialog
 from .rss_manager import RSSManager
-from .ai_analysis_dialog import AIAnalysisDialog
+# from .ai_analysis_dialog import AIAnalysisDialog  # 不再需要，改为直接在日志中显示
 
 
 class MainWindow:
@@ -173,18 +173,18 @@ class MainWindow:
         """创建文章列表标签页"""
         articles_frame = ttk.Frame(self.notebook)
         self.notebook.add(articles_frame, text="文章列表")
-        
+
         # 工具栏
         toolbar = ttk.Frame(articles_frame)
         toolbar.pack(fill=tk.X, pady=(0, 10))
-        
+
         # 过滤选项
         ttk.Label(toolbar, text="显示:").pack(side=tk.LEFT)
-        
+
         self.filter_var = tk.StringVar(value="all")
         filter_frame = ttk.Frame(toolbar)
         filter_frame.pack(side=tk.LEFT, padx=(5, 0))
-        
+
         ttk.Radiobutton(filter_frame, text="全部", variable=self.filter_var,
                        value="all", command=self.filter_articles).pack(side=tk.LEFT)
         ttk.Radiobutton(filter_frame, text="未读", variable=self.filter_var,
@@ -225,17 +225,25 @@ class MainWindow:
         # 文章搜索
         search_frame = ttk.Frame(toolbar)
         search_frame.pack(side=tk.RIGHT)
-        
+
         ttk.Label(search_frame, text="搜索文章:").pack(side=tk.LEFT)
         self.article_search_var = tk.StringVar()
         article_search_entry = ttk.Entry(search_frame, textvariable=self.article_search_var, width=20)
         article_search_entry.pack(side=tk.LEFT, padx=(5, 0))
         article_search_entry.bind('<Return>', self.search_articles)
-        
-        # 文章列表
-        list_frame = ttk.Frame(articles_frame)
-        list_frame.pack(fill=tk.BOTH, expand=True)
-        
+
+        # 创建主内容区域（文章列表 + 日志区域）
+        main_content_frame = ttk.Frame(articles_frame)
+        main_content_frame.pack(fill=tk.BOTH, expand=True)
+
+        # 创建垂直分割面板
+        main_paned = ttk.PanedWindow(main_content_frame, orient=tk.VERTICAL)
+        main_paned.pack(fill=tk.BOTH, expand=True)
+
+        # 文章列表区域
+        list_frame = ttk.Frame(main_paned)
+        main_paned.add(list_frame, weight=3)  # 文章列表占更多空间
+
         # 创建Treeview用于显示文章
         columns = ("title", "feed", "date", "status", "ai_score", "final_score", "ai_summary", "ai_tags")
         self.article_tree = ttk.Treeview(list_frame, columns=columns, show="headings")
@@ -258,22 +266,122 @@ class MainWindow:
         self.article_tree.column("final_score", width=80)
         self.article_tree.column("ai_summary", width=200)
         self.article_tree.column("ai_tags", width=150)
-        
+
         # 添加滚动条
         article_scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.article_tree.yview)
         self.article_tree.configure(yscrollcommand=article_scrollbar.set)
-        
+
         self.article_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         article_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
+
         # 绑定双击事件
         self.article_tree.bind("<Double-1>", self.on_article_double_click)
 
         # 绑定右键菜单
         self.article_tree.bind("<Button-3>", self.show_article_context_menu)
-        
+
+        # 创建日志区域
+        self.create_log_area(main_paned)
+
         # 右键菜单
         self.create_article_context_menu()
+
+    def create_log_area(self, parent):
+        """创建日志区域"""
+        log_frame = ttk.LabelFrame(parent, text="AI分析日志", padding="5")
+        parent.add(log_frame, weight=1)  # 日志区域占较少空间
+
+        # 日志工具栏
+        log_toolbar = ttk.Frame(log_frame)
+        log_toolbar.pack(fill=tk.X, pady=(0, 5))
+
+        # 清空日志按钮
+        ttk.Button(log_toolbar, text="清空日志", command=self.clear_log).pack(side=tk.LEFT)
+
+        # 自动滚动选项
+        self.auto_scroll_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(log_toolbar, text="自动滚动", variable=self.auto_scroll_var).pack(side=tk.LEFT, padx=(10, 0))
+
+        # MCP结构化输出选项
+        self.use_mcp_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(log_toolbar, text="MCP结构化", variable=self.use_mcp_var).pack(side=tk.LEFT, padx=(10, 0))
+
+        # 日志级别选择
+        ttk.Label(log_toolbar, text="级别:").pack(side=tk.LEFT, padx=(20, 5))
+        self.log_level_var = tk.StringVar(value="INFO")
+        log_level_combo = ttk.Combobox(log_toolbar, textvariable=self.log_level_var,
+                                     values=["DEBUG", "INFO", "WARNING", "ERROR"], width=8, state="readonly")
+        log_level_combo.pack(side=tk.LEFT)
+
+        # 创建日志文本区域
+        log_text_frame = ttk.Frame(log_frame)
+        log_text_frame.pack(fill=tk.BOTH, expand=True)
+
+        # 日志文本控件
+        self.log_text = scrolledtext.ScrolledText(
+            log_text_frame,
+            wrap=tk.WORD,
+            height=8,
+            font=("Consolas", 9),
+            state=tk.DISABLED
+        )
+        self.log_text.pack(fill=tk.BOTH, expand=True)
+
+        # 配置日志文本的颜色标签
+        self.log_text.tag_configure("DEBUG", foreground="gray")
+        self.log_text.tag_configure("INFO", foreground="black")
+        self.log_text.tag_configure("WARNING", foreground="orange")
+        self.log_text.tag_configure("ERROR", foreground="red")
+        self.log_text.tag_configure("AI_RESPONSE", foreground="blue", font=("Consolas", 9, "bold"))
+        self.log_text.tag_configure("TIMESTAMP", foreground="gray", font=("Consolas", 8))
+
+        # 初始化日志
+        self.log_message("INFO", "日志系统已初始化")
+
+    def log_message(self, level, message, tag=None):
+        """添加日志消息"""
+        import datetime
+
+        # 检查日志级别过滤
+        level_priority = {"DEBUG": 0, "INFO": 1, "WARNING": 2, "ERROR": 3}
+        current_level = self.log_level_var.get()
+        if level_priority.get(level, 1) < level_priority.get(current_level, 1):
+            return
+
+        # 格式化时间戳
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+
+        # 启用文本编辑
+        self.log_text.config(state=tk.NORMAL)
+
+        # 添加时间戳
+        self.log_text.insert(tk.END, f"[{timestamp}] ", "TIMESTAMP")
+
+        # 添加级别标签
+        self.log_text.insert(tk.END, f"[{level}] ", level)
+
+        # 添加消息内容
+        if tag:
+            self.log_text.insert(tk.END, f"{message}\n", tag)
+        else:
+            self.log_text.insert(tk.END, f"{message}\n")
+
+        # 禁用文本编辑
+        self.log_text.config(state=tk.DISABLED)
+
+        # 自动滚动到底部
+        if self.auto_scroll_var.get():
+            self.log_text.see(tk.END)
+
+        # 更新界面
+        self.root.update_idletasks()
+
+    def clear_log(self):
+        """清空日志"""
+        self.log_text.config(state=tk.NORMAL)
+        self.log_text.delete(1.0, tk.END)
+        self.log_text.config(state=tk.DISABLED)
+        self.log_message("INFO", "日志已清空")
     
     def create_article_detail_tab(self):
         """创建文章详情标签页"""
@@ -312,7 +420,7 @@ class MainWindow:
         """创建文章右键菜单"""
         self.article_context_menu = tk.Menu(self.root, tearoff=0)
         self.article_context_menu.add_command(label="查看详情", command=self.view_article_detail)
-        self.article_context_menu.add_command(label="查看AI分析", command=self.view_ai_analysis)
+        self.article_context_menu.add_command(label="AI分析", command=self.analyze_article_with_ai)
         self.article_context_menu.add_command(label="打开原文", command=self.open_article_url)
         self.article_context_menu.add_separator()
         self.article_context_menu.add_command(label="标记为已读", command=self.mark_as_read)
@@ -986,39 +1094,153 @@ class MainWindow:
         else:
             messagebox.showwarning("警告", "没有可用的文章链接")
 
-    def view_ai_analysis(self):
-        """查看AI分析详情"""
+    def analyze_article_with_ai(self):
+        """对选中文章执行AI分析"""
         selection = self.article_tree.selection()
         if not selection:
             messagebox.showwarning("警告", "请先选择一篇文章")
             return
 
-        # 获取选中的文章索引
+        # 获取选中的文章
+        article = self.get_selected_article()
+        if not article:
+            messagebox.showwarning("警告", "无法获取选中的文章")
+            return
+
+        # 在后台线程中执行AI分析
+        import threading
+
+        def run_ai_analysis():
+            try:
+                self.log_message("INFO", f"开始AI分析: {article.title[:50]}...")
+
+                # 创建AI客户端
+                from ..ai.factory import create_ai_client
+                from ..config.filter_config import AIFilterConfig
+
+                # 获取AI配置
+                ai_config = AIFilterConfig()
+
+                # 检查是否使用MCP
+                use_mcp = self.use_mcp_var.get()
+                client = create_ai_client(ai_config, use_mcp=use_mcp)
+
+                if use_mcp:
+                    self.log_message("INFO", "使用MCP客户端（结构化输出）")
+                else:
+                    self.log_message("INFO", f"使用AI模型: {ai_config.model_name}")
+
+                self.log_message("DEBUG", f"文章内容长度: {len(article.content or '')} 字符")
+                self.log_message("DEBUG", f"API配置: {ai_config.base_url}")
+
+                # 执行AI评估
+                self.log_message("DEBUG", "正在调用AI客户端进行评估...")
+                evaluation = client.evaluate_article(article)
+                self.log_message("DEBUG", "AI客户端评估完成")
+
+                # 在主线程中更新UI
+                self.root.after(0, lambda: self.handle_ai_analysis_result(article, evaluation))
+
+            except Exception as e:
+                error_msg = f"AI分析失败: {str(e)}"
+                self.root.after(0, lambda: self.handle_ai_analysis_error(article, error_msg))
+
+        # 启动后台分析
+        threading.Thread(target=run_ai_analysis, daemon=True).start()
+
+        # 更新状态
+        self.update_status(f"正在分析文章: {article.title[:50]}...")
+
+    def get_selected_article(self):
+        """获取当前选中的文章"""
+        selection = self.article_tree.selection()
+        if not selection:
+            return None
+
         item_index = self.article_tree.index(selection[0])
 
-        # 检查是否有筛选结果和AI分析数据
-        if not self.filter_result or not self.filter_result.selected_articles:
-            messagebox.showwarning("警告", "没有可用的AI分析数据，请先进行智能筛选")
-            return
+        # 根据当前显示模式获取文章
+        if self.display_mode == "filtered" and self.filtered_articles:
+            if item_index < len(self.filtered_articles):
+                return self.filtered_articles[item_index]
+        elif self.current_articles:
+            if item_index < len(self.current_articles):
+                return self.current_articles[item_index]
 
-        if item_index >= len(self.filter_result.selected_articles):
-            messagebox.showwarning("警告", "无法找到对应的AI分析数据")
-            return
+        return None
 
-        # 获取对应的筛选结果
-        combined_result = self.filter_result.selected_articles[item_index]
-
-        # 检查是否有AI分析结果
-        if not combined_result.ai_result or not combined_result.ai_result.evaluation:
-            messagebox.showwarning("警告", "该文章没有AI分析数据")
-            return
-
-        # 显示AI分析对话框
+    def handle_ai_analysis_result(self, article, evaluation):
+        """处理AI分析结果"""
         try:
-            dialog = AIAnalysisDialog(self.root, combined_result)
-            dialog.show()
+            self.log_message("INFO", f"AI分析完成: {article.title[:50]}")
+            self.log_message("INFO", f"总分: {evaluation.total_score}/30 (置信度: {evaluation.confidence:.2f})")
+            self.log_message("INFO", f"政策相关性: {evaluation.relevance_score}/10")
+            self.log_message("INFO", f"创新影响: {evaluation.innovation_impact}/10")
+            self.log_message("INFO", f"实用性: {evaluation.practicality}/10")
+
+            # 显示AI响应的详细内容
+            if evaluation.reasoning:
+                self.log_message("INFO", "AI评估理由:", "AI_RESPONSE")
+                self.log_message("DEBUG", f"理由长度: {len(evaluation.reasoning)} 字符")
+
+                # 如果理由太短或看起来是占位符，显示警告
+                if len(evaluation.reasoning) < 20 or "详细理由" in evaluation.reasoning:
+                    self.log_message("WARNING", f"AI评估理由可能不完整: {evaluation.reasoning}")
+                    self.log_message("WARNING", "这可能是AI响应解析问题，建议检查原始响应")
+                else:
+                    self.log_message("INFO", evaluation.reasoning, "AI_RESPONSE")
+
+            if evaluation.summary:
+                self.log_message("INFO", "AI生成摘要:", "AI_RESPONSE")
+                self.log_message("INFO", evaluation.summary, "AI_RESPONSE")
+
+            if evaluation.key_insights:
+                self.log_message("INFO", "关键洞察:", "AI_RESPONSE")
+                for insight in evaluation.key_insights:
+                    self.log_message("INFO", f"• {insight}", "AI_RESPONSE")
+
+            if evaluation.highlights:
+                self.log_message("INFO", "推荐亮点:", "AI_RESPONSE")
+                for highlight in evaluation.highlights:
+                    self.log_message("INFO", f"• {highlight}", "AI_RESPONSE")
+
+            if evaluation.tags:
+                self.log_message("INFO", f"相关标签: {', '.join(evaluation.tags)}", "AI_RESPONSE")
+
+            if evaluation.detailed_analysis:
+                self.log_message("INFO", "详细分析:", "AI_RESPONSE")
+                for dimension, analysis in evaluation.detailed_analysis.items():
+                    self.log_message("INFO", f"{dimension}: {analysis}", "AI_RESPONSE")
+
+            if evaluation.recommendation_reason:
+                self.log_message("INFO", "推荐理由:", "AI_RESPONSE")
+                self.log_message("INFO", evaluation.recommendation_reason, "AI_RESPONSE")
+
+            if evaluation.risk_assessment:
+                self.log_message("WARNING", "风险评估:", "AI_RESPONSE")
+                self.log_message("WARNING", evaluation.risk_assessment, "AI_RESPONSE")
+
+            if evaluation.implementation_suggestions:
+                self.log_message("INFO", "实施建议:", "AI_RESPONSE")
+                for suggestion in evaluation.implementation_suggestions:
+                    self.log_message("INFO", f"• {suggestion}", "AI_RESPONSE")
+
+            self.log_message("INFO", "=" * 50)
+
+
+
+            self.update_status("AI分析完成")
+
         except Exception as e:
-            messagebox.showerror("错误", f"显示AI分析失败: {e}")
+            self.log_message("ERROR", f"处理AI分析结果时出错: {e}")
+
+    def handle_ai_analysis_error(self, article, error_msg):
+        """处理AI分析错误"""
+        self.log_message("ERROR", error_msg)
+        self.update_status("AI分析失败")
+        messagebox.showerror("AI分析失败", error_msg)
+
+
 
     def toggle_star(self):
         """切换星标状态"""

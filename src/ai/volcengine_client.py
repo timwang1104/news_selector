@@ -208,6 +208,42 @@ class VolcengineClient:
         """从文本中提取评分（备用解析方法）"""
         import re
 
+        # 尝试提取reasoning内容
+        reasoning_text = "从响应文本中提取的评分"
+
+        # 查找可能的评估理由文本
+        reasoning_patterns = [
+            r'评估理由[：:]\s*(.+?)(?=\n|$)',
+            r'reasoning["\']?\s*[：:]\s*["\']([^"\']+)["\']',
+            r'理由[：:]\s*(.+?)(?=\n|$)',
+            r'分析[：:]\s*(.+?)(?=\n|$)',
+        ]
+
+        for pattern in reasoning_patterns:
+            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            if match:
+                extracted_reasoning = match.group(1).strip()
+                if len(extracted_reasoning) > 10:  # 确保不是太短的文本
+                    reasoning_text = extracted_reasoning[:500]  # 限制长度
+                    break
+
+        # 如果没有找到reasoning，尝试提取一段有意义的文本
+        if reasoning_text == "从响应文本中提取的评分":
+            # 查找包含评估相关词汇的段落
+            eval_keywords = ['政策相关性', '创新影响', '实用性', '评估', '分析', '相关', '影响', '应用']
+            lines = text.split('\n')
+            meaningful_lines = []
+
+            for line in lines:
+                line = line.strip()
+                if len(line) > 20 and any(keyword in line for keyword in eval_keywords):
+                    meaningful_lines.append(line)
+                    if len(meaningful_lines) >= 3:  # 最多取3行
+                        break
+
+            if meaningful_lines:
+                reasoning_text = ' '.join(meaningful_lines)[:500]
+
         # 尝试提取数字
         numbers = re.findall(r'\d+', text)
         if len(numbers) >= 3:
@@ -222,7 +258,7 @@ class VolcengineClient:
                     innovation_impact=innovation,
                     practicality=practicality,
                     total_score=total,
-                    reasoning="从响应文本中提取的评分",
+                    reasoning=reasoning_text,
                     confidence=0.5,
                     summary="AI服务异常，无法生成摘要",
                     key_insights=["AI服务暂时不可用"],
@@ -399,12 +435,24 @@ class VolcengineClient:
             
         except (json.JSONDecodeError, ValueError, KeyError) as e:
             logger.error(f"Failed to parse Volcengine AI response: {e}")
-            logger.error(f"Response text: {response_text}")
-            
+            logger.error(f"Cleaned text: {cleaned_text}")
+            logger.error(f"Original response text (first 1000 chars): {response_text[:1000]}...")
+
+            # 检查是否包含reasoning字段
+            if 'reasoning' in response_text:
+                logger.info("原始响应中包含reasoning字段，但JSON解析失败")
+                # 尝试提取reasoning内容
+                import re
+                reasoning_match = re.search(r'"reasoning":\s*"([^"]*)"', response_text)
+                if reasoning_match:
+                    logger.info(f"提取到的reasoning: {reasoning_match.group(1)}")
+
             # 尝试从响应中提取数字
             try:
+                logger.info("尝试从文本中提取评分...")
                 return self._extract_scores_from_text(response_text)
-            except Exception:
+            except Exception as extract_error:
+                logger.error(f"从文本提取评分也失败: {extract_error}")
                 # 返回默认评估
                 return AIEvaluation(
                     relevance_score=5,
@@ -417,24 +465,92 @@ class VolcengineClient:
     
     def _clean_response_text(self, text: str) -> str:
         """清理火山引擎响应文本，移除markdown标记和多余内容"""
+        import re
+
         # 移除markdown代码块标记
         text = text.replace('```json', '').replace('```', '')
-        
-        # 移除可能的前后缀说明文字
+
+        # 尝试多种方法提取JSON
+
+        # 方法1: 查找完整的JSON对象（最常见的情况）
+        json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+        matches = re.findall(json_pattern, text, re.DOTALL)
+
+        for match in matches:
+            try:
+                # 验证是否为有效JSON
+                import json
+                json.loads(match)
+                return match.strip()
+            except:
+                continue
+
+        # 方法2: 查找包含必需字段的JSON片段
+        required_fields = ['relevance_score', 'innovation_impact', 'practicality', 'total_score']
+
+        # 查找包含所有必需字段的文本段
+        for i, line in enumerate(text.split('\n')):
+            if any(field in line for field in required_fields):
+                # 从这一行开始，尝试构建JSON
+                remaining_text = '\n'.join(text.split('\n')[i:])
+
+                # 查找JSON对象
+                brace_count = 0
+                json_start = -1
+                json_end = -1
+
+                for j, char in enumerate(remaining_text):
+                    if char == '{':
+                        if json_start == -1:
+                            json_start = j
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0 and json_start != -1:
+                            json_end = j + 1
+                            break
+
+                if json_start != -1 and json_end != -1:
+                    potential_json = remaining_text[json_start:json_end]
+                    try:
+                        import json
+                        json.loads(potential_json)
+                        return potential_json.strip()
+                    except:
+                        continue
+
+        # 方法3: 逐行查找（原方法的改进版）
         lines = text.strip().split('\n')
         json_lines = []
         in_json = False
-        
+        brace_count = 0
+
         for line in lines:
             line = line.strip()
-            if line.startswith('{') or line.startswith('['):
+
+            # 检查是否包含JSON开始标记
+            if '{' in line and not in_json:
                 in_json = True
+                # 从包含{的位置开始
+                start_pos = line.find('{')
+                line = line[start_pos:]
+
             if in_json:
                 json_lines.append(line)
-            if line.endswith('}') or line.endswith(']'):
-                break
-        
-        return '\n'.join(json_lines)
+                # 计算大括号平衡
+                brace_count += line.count('{') - line.count('}')
+
+                # 如果大括号平衡，说明JSON结束
+                if brace_count == 0:
+                    break
+
+        result = '\n'.join(json_lines)
+
+        # 如果还是没有找到，返回原文本让上层处理
+        if not result.strip():
+            return text.strip()
+
+        return result
     
     def _parse_batch_ai_response(self, response_text: str, article_count: int) -> List[Optional[AIEvaluation]]:
         """解析火山引擎的批量AI响应"""
