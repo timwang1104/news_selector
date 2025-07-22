@@ -1133,13 +1133,21 @@ class MainWindow:
                 self.log_message("DEBUG", f"文章内容长度: {len(article.content or '')} 字符")
                 self.log_message("DEBUG", f"API配置: {ai_config.base_url}")
 
-                # 执行AI评估
+                # 执行AI评估（获取原始响应）
                 self.log_message("DEBUG", "正在调用AI客户端进行评估...")
-                evaluation = client.evaluate_article(article)
+
+                # 检查客户端是否支持原始响应方法
+                if hasattr(client, 'evaluate_article_with_raw_response'):
+                    evaluation, raw_response = client.evaluate_article_with_raw_response(article)
+                else:
+                    # 降级到普通方法
+                    evaluation = client.evaluate_article(article)
+                    raw_response = "该AI客户端不支持原始响应获取"
+
                 self.log_message("DEBUG", "AI客户端评估完成")
 
                 # 在主线程中更新UI
-                self.root.after(0, lambda: self.handle_ai_analysis_result(article, evaluation))
+                self.root.after(0, lambda: self.handle_ai_analysis_result(article, evaluation, raw_response))
 
             except Exception as e:
                 error_msg = f"AI分析失败: {str(e)}"
@@ -1169,7 +1177,7 @@ class MainWindow:
 
         return None
 
-    def handle_ai_analysis_result(self, article, evaluation):
+    def handle_ai_analysis_result(self, article, evaluation, raw_response=None):
         """处理AI分析结果"""
         try:
             self.log_message("INFO", f"AI分析完成: {article.title[:50]}")
@@ -1178,61 +1186,55 @@ class MainWindow:
             self.log_message("INFO", f"创新影响: {evaluation.innovation_impact}/10")
             self.log_message("INFO", f"实用性: {evaluation.practicality}/10")
 
-            # 显示AI响应的详细内容
-            if evaluation.reasoning:
-                self.log_message("INFO", "AI评估理由:", "AI_RESPONSE")
-                self.log_message("DEBUG", f"理由长度: {len(evaluation.reasoning)} 字符")
-
-                # 如果理由太短或看起来是占位符，显示警告
-                if len(evaluation.reasoning) < 20 or "详细理由" in evaluation.reasoning:
-                    self.log_message("WARNING", f"AI评估理由可能不完整: {evaluation.reasoning}")
-                    self.log_message("WARNING", "这可能是AI响应解析问题，建议检查原始响应")
-                else:
-                    self.log_message("INFO", evaluation.reasoning, "AI_RESPONSE")
-
-            if evaluation.summary:
-                self.log_message("INFO", "AI生成摘要:", "AI_RESPONSE")
-                self.log_message("INFO", evaluation.summary, "AI_RESPONSE")
-
-            if evaluation.key_insights:
-                self.log_message("INFO", "关键洞察:", "AI_RESPONSE")
-                for insight in evaluation.key_insights:
-                    self.log_message("INFO", f"• {insight}", "AI_RESPONSE")
-
-            if evaluation.highlights:
-                self.log_message("INFO", "推荐亮点:", "AI_RESPONSE")
-                for highlight in evaluation.highlights:
-                    self.log_message("INFO", f"• {highlight}", "AI_RESPONSE")
-
-            if evaluation.tags:
-                self.log_message("INFO", f"相关标签: {', '.join(evaluation.tags)}", "AI_RESPONSE")
-
-            if evaluation.detailed_analysis:
-                self.log_message("INFO", "详细分析:", "AI_RESPONSE")
-                for dimension, analysis in evaluation.detailed_analysis.items():
-                    self.log_message("INFO", f"{dimension}: {analysis}", "AI_RESPONSE")
-
-            if evaluation.recommendation_reason:
-                self.log_message("INFO", "推荐理由:", "AI_RESPONSE")
-                self.log_message("INFO", evaluation.recommendation_reason, "AI_RESPONSE")
-
-            if evaluation.risk_assessment:
-                self.log_message("WARNING", "风险评估:", "AI_RESPONSE")
-                self.log_message("WARNING", evaluation.risk_assessment, "AI_RESPONSE")
-
-            if evaluation.implementation_suggestions:
-                self.log_message("INFO", "实施建议:", "AI_RESPONSE")
-                for suggestion in evaluation.implementation_suggestions:
-                    self.log_message("INFO", f"• {suggestion}", "AI_RESPONSE")
+            # 显示原始AI响应
+            if raw_response:
+                self.log_message("INFO", "=" * 30 + " AI原始响应 " + "=" * 30, "AI_RESPONSE")
+                self.log_message("INFO", raw_response, "AI_RESPONSE")
+                self.log_message("INFO", "=" * 75, "AI_RESPONSE")
 
             self.log_message("INFO", "=" * 50)
 
-
+            # 更新文章列表中的AI分数
+            self.update_article_ai_score_in_list(article, evaluation)
 
             self.update_status("AI分析完成")
 
         except Exception as e:
             self.log_message("ERROR", f"处理AI分析结果时出错: {e}")
+
+    def update_article_ai_score_in_list(self, article, evaluation):
+        """更新文章列表中的AI分数"""
+        try:
+            # 查找对应的文章项
+            for item in self.article_tree.get_children():
+                values = self.article_tree.item(item, 'values')
+                if values and len(values) > 0:
+                    # 通过标题匹配文章（简化的匹配方式）
+                    display_title = article.get_display_title(50) if hasattr(article, 'get_display_title') else article.title[:50]
+                    if values[0] == display_title:
+                        # 更新AI分数栏（第5列，索引为4）
+                        ai_score_text = f"{evaluation.total_score}/30"
+
+                        # 获取当前的值并更新AI分数
+                        current_values = list(values)
+                        if len(current_values) > 4:
+                            current_values[4] = ai_score_text
+                        else:
+                            # 如果列数不够，扩展列表
+                            while len(current_values) <= 4:
+                                current_values.append("")
+                            current_values[4] = ai_score_text
+
+                        # 更新树视图项
+                        self.article_tree.item(item, values=current_values)
+
+                        self.log_message("INFO", f"已更新文章AI分数: {display_title} -> {ai_score_text}")
+                        break
+            else:
+                self.log_message("WARNING", f"未找到对应的文章项进行AI分数更新: {article.title[:50]}")
+
+        except Exception as e:
+            self.log_message("ERROR", f"更新文章AI分数时出错: {e}")
 
     def handle_ai_analysis_error(self, article, error_msg):
         """处理AI分析错误"""

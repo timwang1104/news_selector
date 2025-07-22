@@ -47,19 +47,45 @@ class MCPClient:
         try:
             # 构建结构化提示
             structured_prompt = self._build_structured_prompt(article)
-            
+
             # 调用MCP服务
             mcp_response = self._call_mcp_service(structured_prompt)
-            
+
             # 解析结构化响应
             structured_eval = self._parse_structured_response(mcp_response)
-            
+
             # 转换为AIEvaluation对象
             return self._convert_to_ai_evaluation(structured_eval)
-            
+
         except Exception as e:
             logger.error(f"MCP evaluation failed: {e}")
             return self._fallback_evaluation(article)
+
+    def evaluate_article_with_raw_response(self, article: NewsArticle) -> tuple[AIEvaluation, str]:
+        """使用MCP进行结构化文章评估并返回原始响应"""
+        try:
+            # 构建结构化提示
+            structured_prompt = self._build_structured_prompt(article)
+
+            # 调用MCP服务
+            mcp_response = self._call_mcp_service(structured_prompt)
+
+            # 解析结构化响应
+            structured_eval = self._parse_structured_response(mcp_response)
+
+            # 转换为AIEvaluation对象
+            evaluation = self._convert_to_ai_evaluation(structured_eval)
+
+            # 格式化原始响应用于显示
+            raw_response = json.dumps(mcp_response, ensure_ascii=False, indent=2)
+
+            return evaluation, raw_response
+
+        except Exception as e:
+            logger.error(f"MCP evaluation failed: {e}")
+            fallback_eval = self._fallback_evaluation(article)
+            fallback_response = f"MCP服务异常，使用降级评估策略。错误信息: {str(e)}"
+            return fallback_eval, fallback_response
     
     def _build_structured_prompt(self, article: NewsArticle) -> Dict[str, Any]:
         """构建结构化提示"""

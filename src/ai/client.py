@@ -81,6 +81,31 @@ class AIClient:
             logger.error(f"AI evaluation failed for article {article.id}: {e}")
             logger.warning(f"使用降级评估策略: {article_title}")
             return self._fallback_evaluation(article)
+
+    def evaluate_article_with_raw_response(self, article: NewsArticle) -> tuple[AIEvaluation, str]:
+        """评估单篇文章并返回原始响应"""
+        article_title = article.title[:50] + "..." if len(article.title) > 50 else article.title
+        logger.debug(f"开始评估文章（含原始响应）: {article_title}")
+
+        try:
+            logger.debug(f"构建评估提示词...")
+            prompt = self._build_evaluation_prompt(article)
+
+            logger.debug(f"调用AI API进行评估...")
+            raw_response = self._call_ai_api(prompt)
+
+            logger.debug(f"解析AI响应...")
+            evaluation = self._parse_response(raw_response)
+
+            logger.info(f"文章评估完成: {article_title} - 评分: {evaluation.total_score}/30")
+            return evaluation, raw_response
+
+        except Exception as e:
+            logger.error(f"AI evaluation failed for article {article.id}: {e}")
+            logger.warning(f"使用降级评估策略: {article_title}")
+            fallback_eval = self._fallback_evaluation(article)
+            fallback_response = f"AI服务异常，使用降级评估策略。错误信息: {str(e)}"
+            return fallback_eval, fallback_response
     
     def batch_evaluate(self, articles: List[NewsArticle]) -> List[AIEvaluation]:
         """批量评估文章"""

@@ -86,6 +86,19 @@ class VolcengineClient:
             logger.error(f"AI evaluation failed for article {article.id}: {e}")
             return self._fallback_evaluation(article)
 
+    def evaluate_article_with_raw_response(self, article: NewsArticle) -> tuple[AIEvaluation, str]:
+        """评估单篇文章并返回原始响应"""
+        try:
+            prompt = self._build_evaluation_prompt(article)
+            raw_response = self._call_volcengine_api(prompt)
+            evaluation = self._parse_ai_response(raw_response)
+            return evaluation, raw_response
+        except Exception as e:
+            logger.error(f"AI evaluation failed for article {article.id}: {e}")
+            fallback_eval = self._fallback_evaluation(article)
+            fallback_response = f"火山引擎AI服务异常，使用降级评估策略。错误信息: {str(e)}"
+            return fallback_eval, fallback_response
+
     def batch_evaluate(self, articles: List[NewsArticle]) -> List[AIEvaluation]:
         """批量评估文章 - 标准接口"""
         results = self.evaluate_articles_batch(articles)
