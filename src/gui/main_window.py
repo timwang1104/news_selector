@@ -419,16 +419,15 @@ class MainWindow:
     def create_article_context_menu(self):
         """创建文章右键菜单"""
         self.article_context_menu = tk.Menu(self.root, tearoff=0)
-        self.article_context_menu.add_command(label="查看详情", command=self.view_article_detail)
-        self.article_context_menu.add_command(label="AI分析", command=self.analyze_article_with_ai)
-        self.article_context_menu.add_command(label="打开原文", command=self.open_article_url)
+        self.article_context_menu.add_command(label="📖 查看详情", command=self.view_article_detail)
+        self.article_context_menu.add_command(label="🤖 查看AI分析", command=self.view_ai_analysis)
+        self.article_context_menu.add_command(label="🧪 AI分析", command=self.analyze_article_with_ai)
+        self.article_context_menu.add_command(label="🌐 打开原文", command=self.open_article_url)
         self.article_context_menu.add_separator()
-        self.article_context_menu.add_command(label="标记为已读", command=self.mark_as_read)
-        self.article_context_menu.add_command(label="标记为未读", command=self.mark_as_unread)
+        self.article_context_menu.add_command(label="✅ 标记为已读", command=self.mark_as_read)
+        self.article_context_menu.add_command(label="⭕ 标记为未读", command=self.mark_as_unread)
         self.article_context_menu.add_separator()
-        self.article_context_menu.add_command(label="加星标", command=self.toggle_star)
-
-        self.article_tree.bind("<Button-3>", self.show_article_context_menu)
+        self.article_context_menu.add_command(label="⭐ 加星标", command=self.toggle_star)
     
     def create_status_bar(self):
         """创建状态栏"""
@@ -601,13 +600,24 @@ class MainWindow:
 
             status_text = " ".join(status) if status else "已读"
 
+            # 尝试获取AI分析结果
+            ai_score_text = ""
+            try:
+                from ..utils.ai_analysis_storage import ai_analysis_storage
+                analysis_record = ai_analysis_storage.get_analysis(article)
+                if analysis_record:
+                    ai_score_text = f"{analysis_record.evaluation.total_score}/30"
+            except Exception as e:
+                # 如果获取AI分析失败，保持空字符串
+                pass
+
             # 添加到列表
             self.article_tree.insert("", tk.END, values=(
                 article.get_display_title(50),
                 article.feed_title or "未知",
                 article.published.strftime("%m-%d %H:%M"),
                 status_text,
-                "",  # 普通文章没有AI分数
+                ai_score_text,  # 显示AI分数（如果有的话）
                 "",  # 普通文章没有综合分数
                 "",  # 普通文章没有AI摘要
                 ""   # 普通文章没有AI标签
@@ -736,6 +746,7 @@ class MainWindow:
             context_menu.add_command(label="🧪 测试筛选", command=self.test_single_article_filter)
             context_menu.add_separator()
             context_menu.add_command(label="📖 查看详情", command=lambda: self.on_article_double_click(None))
+            context_menu.add_command(label="🤖 查看AI分析", command=self.view_ai_analysis)
             context_menu.add_command(label="🌐 打开原文", command=self.open_article_url)
 
             # 显示菜单
@@ -1206,12 +1217,26 @@ class MainWindow:
         """更新文章列表中的AI分数"""
         try:
             # 查找对应的文章项
-            for item in self.article_tree.get_children():
+            article_found = False
+            for item_index, item in enumerate(self.article_tree.get_children()):
                 values = self.article_tree.item(item, 'values')
                 if values and len(values) > 0:
-                    # 通过标题匹配文章（简化的匹配方式）
-                    display_title = article.get_display_title(50) if hasattr(article, 'get_display_title') else article.title[:50]
-                    if values[0] == display_title:
+                    # 多种匹配方式：
+                    # 1. 通过索引匹配（最准确）
+                    if hasattr(self, 'current_articles') and item_index < len(self.current_articles):
+                        current_article = self.current_articles[item_index]
+                        if current_article.id == article.id:
+                            article_found = True
+                        elif current_article.title == article.title:
+                            article_found = True
+
+                    # 2. 通过标题匹配（备用方案）
+                    if not article_found:
+                        display_title = article.get_display_title(50) if hasattr(article, 'get_display_title') else article.title[:50]
+                        if values[0] == display_title:
+                            article_found = True
+
+                    if article_found:
                         # 更新AI分数栏（第5列，索引为4）
                         ai_score_text = f"{evaluation.total_score}/30"
 
@@ -1228,9 +1253,10 @@ class MainWindow:
                         # 更新树视图项
                         self.article_tree.item(item, values=current_values)
 
-                        self.log_message("INFO", f"已更新文章AI分数: {display_title} -> {ai_score_text}")
+                        self.log_message("INFO", f"已更新文章AI分数: {article.title[:50]} -> {ai_score_text}")
                         break
-            else:
+
+            if not article_found:
                 self.log_message("WARNING", f"未找到对应的文章项进行AI分数更新: {article.title[:50]}")
 
         except Exception as e:
@@ -1285,14 +1311,6 @@ class MainWindow:
 
         threading.Thread(target=mark_read, daemon=True).start()
 
-    def show_article_context_menu(self, event):
-        """显示文章右键菜单"""
-        # 选中右键点击的项目
-        item = self.article_tree.identify_row(event.y)
-        if item:
-            self.article_tree.selection_set(item)
-            self.article_context_menu.post(event.x_root, event.y_root)
-
     def mark_as_read(self):
         """标记为已读"""
         selection = self.article_tree.selection()
@@ -1315,6 +1333,69 @@ class MainWindow:
                     self.root.after(0, lambda: messagebox.showerror("错误", f"标记失败: {e}"))
 
             threading.Thread(target=mark_read, daemon=True).start()
+
+    def view_ai_analysis(self):
+        """查看文章的AI分析结果"""
+        selection = self.article_tree.selection()
+        if not selection:
+            messagebox.showwarning("警告", "请先选择一篇文章")
+            return
+
+        # 获取选中的文章
+        article = self.get_selected_article()
+        if not article:
+            messagebox.showwarning("警告", "无法获取选中的文章")
+            return
+
+        # 检查是否有AI分析结果
+        from ..utils.ai_analysis_storage import ai_analysis_storage
+
+        try:
+            analysis_record = ai_analysis_storage.get_analysis(article)
+            if analysis_record:
+                # 显示AI分析结果
+                self.show_ai_analysis_dialog(article, analysis_record)
+            else:
+                # 没有分析结果，询问是否进行AI分析
+                result = messagebox.askyesno(
+                    "AI分析",
+                    f"文章「{article.title[:50]}...」还没有AI分析结果。\n\n是否现在进行AI分析？"
+                )
+                if result:
+                    self.analyze_article_with_ai()
+        except Exception as e:
+            messagebox.showerror("错误", f"获取AI分析结果失败: {e}")
+
+    def show_ai_analysis_dialog(self, article, analysis_record):
+        """显示AI分析结果对话框"""
+        # 创建新窗口
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"AI分析结果 - {article.title[:50]}...")
+        dialog.geometry("800x600")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # 创建主框架
+        main_frame = ttk.Frame(dialog)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # 文章标题
+        title_label = ttk.Label(main_frame, text=article.title, font=("Arial", 12, "bold"), wraplength=750)
+        title_label.pack(anchor=tk.W, pady=(0, 10))
+
+        # 创建笔记本控件（标签页）
+        notebook = ttk.Notebook(main_frame)
+        notebook.pack(fill=tk.BOTH, expand=True)
+
+        # 评分概览标签页
+        self.create_score_overview_tab(notebook, analysis_record)
+
+        # 原始响应标签页
+        self.create_raw_response_tab(notebook, analysis_record)
+
+        # 关闭按钮
+        close_button = ttk.Button(main_frame, text="关闭", command=dialog.destroy)
+        close_button.pack(pady=(10, 0))
 
     def mark_as_unread(self):
         """标记为未读"""
@@ -2376,6 +2457,93 @@ AI筛选通过: {result.ai_filtered_count}
 
         # 更新状态栏
         self.update_status(f"显示 {source_name} 文章: {len(converted_articles)} 篇")
+
+    def create_score_overview_tab(self, notebook, analysis_record):
+        """创建评分概览标签页"""
+        frame = ttk.Frame(notebook)
+        notebook.add(frame, text="评分概览")
+
+        main_frame = ttk.Frame(frame)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        evaluation = analysis_record.evaluation
+
+        # 总分显示
+        total_frame = ttk.LabelFrame(main_frame, text="总体评分", padding="10")
+        total_frame.pack(fill=tk.X, pady=(0, 10))
+
+        total_score_label = ttk.Label(total_frame, text=f"{evaluation.total_score}/30",
+                                     font=("Arial", 24, "bold"))
+        total_score_label.pack()
+
+        confidence_label = ttk.Label(total_frame, text=f"置信度: {evaluation.confidence:.2f}")
+        confidence_label.pack()
+
+        # 分项评分
+        scores_frame = ttk.LabelFrame(main_frame, text="分项评分", padding="10")
+        scores_frame.pack(fill=tk.X, pady=(0, 10))
+
+        scores_data = [
+            ("政策相关性", evaluation.relevance_score, 10),
+            ("创新影响", evaluation.innovation_impact, 10),
+            ("实用性", evaluation.practicality, 10)
+        ]
+
+        for i, (name, score, max_score) in enumerate(scores_data):
+            score_frame = ttk.Frame(scores_frame)
+            score_frame.pack(fill=tk.X, pady=2)
+
+            ttk.Label(score_frame, text=f"{name}:", width=12).pack(side=tk.LEFT)
+            ttk.Label(score_frame, text=f"{score}/{max_score}").pack(side=tk.LEFT, padx=(10, 0))
+
+            # 进度条
+            progress = ttk.Progressbar(score_frame, length=200, maximum=max_score, value=score)
+            progress.pack(side=tk.LEFT, padx=(10, 0))
+
+        # 模型信息
+        info_frame = ttk.LabelFrame(main_frame, text="分析信息", padding="10")
+        info_frame.pack(fill=tk.X, pady=(0, 10))
+
+        info_text = f"AI模型: {analysis_record.ai_model}\n"
+        info_text += f"分析时间: {analysis_record.created_at}\n"
+        info_text += f"处理耗时: {analysis_record.processing_time:.2f}秒\n"
+        info_text += f"缓存状态: {'是' if analysis_record.cached else '否'}"
+
+        ttk.Label(info_frame, text=info_text, justify=tk.LEFT).pack(anchor=tk.W)
+
+        # 推理过程
+        if evaluation.reasoning:
+            reasoning_frame = ttk.LabelFrame(main_frame, text="推理过程", padding="10")
+            reasoning_frame.pack(fill=tk.BOTH, expand=True)
+
+            reasoning_text = tk.Text(reasoning_frame, wrap=tk.WORD, height=8, state="disabled")
+            reasoning_text.pack(fill=tk.BOTH, expand=True)
+
+            reasoning_text.config(state="normal")
+            reasoning_text.insert("1.0", evaluation.reasoning)
+            reasoning_text.config(state="disabled")
+
+    def create_raw_response_tab(self, notebook, analysis_record):
+        """创建原始响应标签页"""
+        frame = ttk.Frame(notebook)
+        notebook.add(frame, text="原始响应")
+
+        main_frame = ttk.Frame(frame)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # 原始响应文本
+        response_text = tk.Text(main_frame, wrap=tk.WORD, state="disabled", font=("Consolas", 10))
+        response_text.pack(fill=tk.BOTH, expand=True)
+
+        # 添加滚动条
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=response_text.yview)
+        scrollbar.pack(side="right", fill="y")
+        response_text.configure(yscrollcommand=scrollbar.set)
+
+        # 插入原始响应内容
+        response_text.config(state="normal")
+        response_text.insert("1.0", analysis_record.raw_response or "无原始响应数据")
+        response_text.config(state="disabled")
 
     def run(self):
         """运行主循环"""

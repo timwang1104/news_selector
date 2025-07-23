@@ -102,8 +102,26 @@ class VolcengineClient:
     def batch_evaluate(self, articles: List[NewsArticle]) -> List[AIEvaluation]:
         """批量评估文章 - 标准接口"""
         results = self.evaluate_articles_batch(articles)
-        # 过滤掉 None 结果，确保返回有效的评估结果
-        return [result for result in results if result is not None]
+        # 确保返回结果数量与输入文章数量匹配
+        # 如果某个结果为None，用降级评估替换
+        final_results = []
+        for i, result in enumerate(results):
+            if result is not None:
+                final_results.append(result)
+            else:
+                # 为失败的文章创建降级评估
+                article = articles[i] if i < len(articles) else None
+                fallback_eval = self._fallback_evaluation(article)
+                final_results.append(fallback_eval)
+
+        # 如果结果数量仍然不足，补充降级评估
+        while len(final_results) < len(articles):
+            missing_index = len(final_results)
+            article = articles[missing_index] if missing_index < len(articles) else None
+            fallback_eval = self._fallback_evaluation(article)
+            final_results.append(fallback_eval)
+
+        return final_results
 
     def evaluate_articles_batch(self, articles: List[NewsArticle]) -> List[Optional[AIEvaluation]]:
         """批量评估文章"""

@@ -9,7 +9,8 @@ from ..config.filter_config import AIFilterConfig
 from ..ai.factory import create_ai_client
 from ..ai.exceptions import AIClientError
 from ..ai.cache import AIResultCache
-from .base import BaseFilter, AIFilterResult, FilterMetrics
+from ..utils.ai_analysis_storage import ai_analysis_storage
+from .base import BaseFilter, AIFilterResult, FilterMetrics, AIEvaluation
 
 logger = logging.getLogger(__name__)
 
@@ -87,20 +88,40 @@ class AIFilter(BaseFilter):
 
                     logger.info(f"缓存命中: {article_title} - 评分: {cached_evaluation.total_score}/30 (缓存)")
 
-                    return AIFilterResult(
+                    cached_result = AIFilterResult(
                         article=article,
                         evaluation=cached_evaluation,
                         processing_time=processing_time,
                         ai_model=self.config.model_name,
                         cached=True
                     )
+
+                    # 检查是否已有分析结果存储，如果没有则保存（缓存结果可能没有原始响应）
+                    try:
+                        if not ai_analysis_storage.has_analysis(article):
+                            ai_analysis_storage.save_analysis(article, cached_result, "缓存结果，无原始响应")
+                            logger.debug(f"缓存结果已保存到本地存储: {article_title}")
+                    except Exception as e:
+                        logger.warning(f"保存缓存结果失败: {e}")
+
+                    return cached_result
                 else:
                     self.metrics.record_cache_miss()
                     logger.debug(f"缓存未命中: {article_title}")
 
-            # AI评估
+            # AI评估（获取原始响应）
             logger.debug(f"开始AI评估: {article_title}")
-            evaluation = self.client.evaluate_article(article)
+
+            # 尝试获取原始响应
+            raw_response = ""
+            if hasattr(self.client, 'evaluate_article_with_raw_response'):
+                try:
+                    evaluation, raw_response = self.client.evaluate_article_with_raw_response(article)
+                except Exception as e:
+                    logger.warning(f"获取原始响应失败，降级到普通评估: {e}")
+                    evaluation = self.client.evaluate_article(article)
+            else:
+                evaluation = self.client.evaluate_article(article)
 
             # 记录评估详情
             logger.info(f"AI评估完成: {article_title}")
@@ -139,6 +160,13 @@ class AIFilter(BaseFilter):
                 ai_model=self.config.model_name,
                 cached=False
             )
+
+            # 保存AI分析结果到本地存储
+            try:
+                ai_analysis_storage.save_analysis(article, result, raw_response)
+                logger.debug(f"AI分析结果已保存到本地存储: {article_title}")
+            except Exception as e:
+                logger.warning(f"保存AI分析结果失败: {e}")
 
             # 返回评估结果，由调用方进行排名筛选
             return result
@@ -194,20 +222,42 @@ class AIFilter(BaseFilter):
 
                 print(f"✅ AI批量评估完成: 耗时 {processing_time:.2f}s, 获得 {len(evaluations)} 个评估结果")
 
+                # 确保评估结果数量与文章数量匹配
+                if len(evaluations) != len(uncached_articles):
+                    print(f"⚠️  评估结果数量({len(evaluations)})与文章数量({len(uncached_articles)})不匹配")
+                    # 如果评估结果不足，用降级评估补充
+                    while len(evaluations) < len(uncached_articles):
+                        missing_article = uncached_articles[len(evaluations)]
+                        fallback_eval = self._create_fallback_evaluation(missing_article)
+                        evaluations.append(fallback_eval)
+                        print(f"   为文章 '{missing_article.title[:40]}...' 添加降级评估")
+
                 for i, (article, evaluation) in enumerate(zip(uncached_articles, evaluations)):
-                    print(f"   文章{i+1}: 分数={evaluation.total_score:.1f}, 置信度={evaluation.confidence:.2f}, 标题={article.title[:40]}...")
+                    if evaluation:
+                        print(f"   文章{i+1}: 分数={evaluation.total_score:.1f}, 置信度={evaluation.confidence:.2f}, 标题={article.title[:40]}...")
 
-                    # 缓存结果
-                    if self.cache and evaluation.confidence >= self.config.min_confidence:
-                        self.cache.set(article, evaluation)
+                        # 缓存结果
+                        if self.cache and evaluation.confidence >= self.config.min_confidence:
+                            self.cache.set(article, evaluation)
 
-                    uncached_results.append(AIFilterResult(
-                        article=article,
-                        evaluation=evaluation,
-                        processing_time=processing_time / len(uncached_articles),
-                        ai_model=self.config.model_name,
-                        cached=False
-                    ))
+                        # 创建AI筛选结果
+                        ai_result = AIFilterResult(
+                            article=article,
+                            evaluation=evaluation,
+                            processing_time=processing_time / len(uncached_articles),
+                            ai_model=self.config.model_name,
+                            cached=False
+                        )
+
+                        # 保存AI分析结果到本地存储
+                        try:
+                            ai_analysis_storage.save_analysis(article, ai_result, "批量评估，无原始响应")
+                        except Exception as e:
+                            logger.warning(f"保存批量AI分析结果失败: {e}")
+
+                        uncached_results.append(ai_result)
+                    else:
+                        print(f"   文章{i+1}: 评估失败，跳过 - {article.title[:40]}...")
 
                 self.metrics.record_processing_time(processing_time * 1000)
 
@@ -258,7 +308,26 @@ class AIFilter(BaseFilter):
             batch = articles[i:i + batch_size]
             batches.append(batch)
         return batches
-    
+
+    def _create_fallback_evaluation(self, article: NewsArticle) -> AIEvaluation:
+        """创建降级评估结果"""
+        return AIEvaluation(
+            relevance_score=5,
+            innovation_impact=5,
+            practicality=5,
+            total_score=15,
+            reasoning="AI批量评估失败，使用降级评估策略",
+            confidence=0.3,
+            summary="",
+            key_insights=[],
+            highlights=[],
+            tags=[],
+            detailed_analysis={},
+            recommendation_reason="",
+            risk_assessment="",
+            implementation_suggestions=[]
+        )
+
     def get_metrics(self) -> dict:
         """获取筛选指标"""
         metrics = self.metrics.get_performance_summary()
