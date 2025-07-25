@@ -118,6 +118,16 @@ class FilterProgressCallback(CLIProgressCallback):
         """AI结果排序完成"""
         self.dialog.add_detail_log(f"🏆 排序完成，从 {total_count} 个结果中选出前 {selected_count} 篇")
 
+    def on_all_ai_results(self, all_results):
+        """处理所有AI评估结果，更新界面显示"""
+        try:
+            # 通知主窗口更新所有文章的AI得分
+            if hasattr(self.dialog, 'main_window') and self.dialog.main_window:
+                self.dialog.main_window.update_all_articles_ai_scores(all_results)
+                self.dialog.add_detail_log(f"📊 已更新 {len(all_results)} 篇文章的AI得分显示")
+        except Exception as e:
+            self.dialog.add_detail_log(f"⚠️ 更新AI得分显示时出错: {e}")
+
     def on_ai_complete(self, results_count: int):
         """AI筛选完成"""
         if self.ai_start_time:
@@ -171,10 +181,11 @@ class FilterProgressCallback(CLIProgressCallback):
 class FilterProgressDialog:
     """筛选进度对话框"""
     
-    def __init__(self, parent, articles, filter_type="chain"):
+    def __init__(self, parent, articles, filter_type="chain", main_window=None):
         self.parent = parent
         self.articles = articles
         self.filter_type = filter_type
+        self.main_window = main_window  # 添加主窗口引用
         self.result = None
         self.cancelled = False
         self.completed = False  # 新增：标记筛选是否正常完成

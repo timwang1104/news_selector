@@ -33,7 +33,7 @@ class AgentAPIConfig:
     verify_ssl: bool = True
 
     # 服务提供商标识
-    provider: str = "openai"  # openai, siliconflow, anthropic, volcengine, custom
+    provider: str = "openai"  # openai, siliconflow, anthropic, volcengine, moonshot, custom
     
     def __post_init__(self):
         if self.headers is None:
@@ -233,6 +233,9 @@ class AgentConfigManager:
 
         # 创建火山引擎预设配置
         self.create_volcengine_preset()
+
+        # 创建Moonshot预设配置
+        self.create_moonshot_preset()
 
     def create_siliconflow_preset(self):
         """创建硅基流动预设配置"""
@@ -465,6 +468,123 @@ class AgentConfigManager:
 
         self.configs["火山引擎"] = volcengine_config
         self.save_config("火山引擎")
+
+    def create_moonshot_preset(self):
+        """创建Moonshot预设配置"""
+        # 检查是否已存在Moonshot配置
+        if any("Moonshot" in name or "moonshot" in name.lower() for name in self.configs.keys()):
+            return
+
+        # 从环境变量加载API Key
+        moonshot_api_key = os.getenv("MOONSHOT_API_KEY", "")
+
+        api_config = AgentAPIConfig(
+            name="Moonshot平台",
+            description="Moonshot AI平台，提供Kimi大模型服务，支持超长上下文",
+            api_key=moonshot_api_key,
+            base_url="https://api.moonshot.cn/v1",
+            model_name="moonshot-v1-8k",  # 默认使用8k上下文模型
+            temperature=0.3,
+            max_tokens=2000,
+            timeout=90,
+            provider="moonshot",
+            headers={
+                "Content-Type": "application/json"
+            }
+        )
+
+        # 针对Moonshot优化的提示词
+        moonshot_evaluation_prompt = """
+你是上海市科委的专业顾问，请评估以下科技新闻文章对上海科技发展的相关性和价值。
+
+文章信息：
+标题：{title}
+摘要：{summary}
+内容预览：{content_preview}
+
+请从以下三个维度进行评估（每个维度0-10分）：
+
+1. 政策相关性 (0-10分)：评估文章内容与上海科技政策、产业发展规划的相关程度
+2. 创新影响 (0-10分)：评估文章所述技术或事件对科技创新的推动作用
+3. 实用性 (0-10分)：评估文章内容的可操作性和对实际工作的指导价值
+
+评估要求：
+- 重点关注与上海科技发展相关的内容
+- 考虑文章的时效性和权威性
+- 评估理由要具体明确，避免泛泛而谈
+- 总分为三个维度分数之和（最高30分）
+
+请严格按照以下JSON格式返回评估结果，不要包含其他内容：
+{{
+    "relevance_score": <政策相关性分数>,
+    "innovation_impact": <创新影响分数>,
+    "practicality": <实用性分数>,
+    "total_score": <总分>,
+    "reasoning": "<详细评估理由>",
+    "confidence": <置信度，0-1之间的小数>
+}}
+
+注意：请确保返回的是有效的JSON格式，不要包含markdown代码块标记。
+"""
+
+        moonshot_batch_evaluation_prompt = """
+你是上海市科委的专业顾问，请批量评估以下科技新闻文章对上海科技发展的相关性和价值。
+
+文章列表：
+{articles_info}
+
+请对每篇文章进行评估，返回JSON数组格式的结果。
+评估维度和格式要求与单篇评估相同。
+
+请严格按照以下JSON数组格式返回结果，不要包含其他内容：
+[
+    {{
+        "article_index": 0,
+        "relevance_score": <分数>,
+        "innovation_impact": <分数>,
+        "practicality": <分数>,
+        "total_score": <总分>,
+        "reasoning": "<评估理由>",
+        "confidence": <置信度>
+    }},
+    ...
+]
+
+注意：请确保返回的是有效的JSON数组格式，不要包含markdown代码块标记。
+"""
+
+        prompt_config = AgentPromptConfig(
+            name="Moonshot科技政策评估",
+            description="适用于Moonshot Kimi模型的科技政策评估提示词，支持长上下文分析",
+            version="1.0",
+            system_prompt="你是上海市科委的专业顾问，具有深厚的科技政策背景和丰富的行业经验。请严格按照要求的JSON格式返回结果。",
+            evaluation_prompt=moonshot_evaluation_prompt,
+            batch_evaluation_prompt=moonshot_batch_evaluation_prompt,
+            dimensions=[
+                {"name": "政策相关性", "description": "与科技政策的相关程度", "weight": 1.0},
+                {"name": "创新影响", "description": "对科技创新的推动作用", "weight": 1.0},
+                {"name": "实用性", "description": "可操作性和实施性", "weight": 1.0}
+            ],
+            scoring_range={"min": 0, "max": 10, "total_max": 30},
+            output_format="json",
+            examples=[],
+            instructions=[
+                "总分为各维度分数之和",
+                "评估理由要具体明确",
+                "置信度反映评估的确定程度",
+                "充分利用长上下文能力进行深度分析"
+            ]
+        )
+
+        moonshot_config = AgentConfig(
+            config_name="Moonshot",
+            api_config=api_config,
+            prompt_config=prompt_config,
+            is_default=False
+        )
+
+        self.configs["Moonshot"] = moonshot_config
+        self.save_config("Moonshot")
 
     def save_config(self, config_name: str):
         """保存配置到文件"""

@@ -9,7 +9,8 @@ from ..config.filter_config import AIFilterConfig
 from ..ai.factory import create_ai_client
 from ..ai.exceptions import AIClientError
 from ..ai.cache import AIResultCache
-from ..utils.ai_analysis_storage import ai_analysis_storage
+# 延迟导入避免循环导入
+# from ..utils.ai_analysis_storage import ai_analysis_storage
 from .base import BaseFilter, AIFilterResult, FilterMetrics, AIEvaluation
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,7 @@ class AIFilter(BaseFilter):
 
                     # 检查是否已有分析结果存储，如果没有则保存（缓存结果可能没有原始响应）
                     try:
+                        from ..utils.ai_analysis_storage import ai_analysis_storage
                         if not ai_analysis_storage.has_analysis(article):
                             ai_analysis_storage.save_analysis(article, cached_result, "缓存结果，无原始响应")
                             logger.debug(f"缓存结果已保存到本地存储: {article_title}")
@@ -163,6 +165,7 @@ class AIFilter(BaseFilter):
 
             # 保存AI分析结果到本地存储
             try:
+                from ..utils.ai_analysis_storage import ai_analysis_storage
                 ai_analysis_storage.save_analysis(article, result, raw_response)
                 logger.debug(f"AI分析结果已保存到本地存储: {article_title}")
             except Exception as e:
@@ -251,6 +254,7 @@ class AIFilter(BaseFilter):
 
                         # 保存AI分析结果到本地存储
                         try:
+                            from ..utils.ai_analysis_storage import ai_analysis_storage
                             ai_analysis_storage.save_analysis(article, ai_result, "批量评估，无原始响应")
                         except Exception as e:
                             logger.warning(f"保存批量AI分析结果失败: {e}")

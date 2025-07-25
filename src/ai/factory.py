@@ -37,6 +37,10 @@ def create_ai_client(config: AIFilterConfig, use_mcp: bool = False):
             print(f"🚀 创建Volcengine客户端")
             from .volcengine_client import VolcengineClient
             return VolcengineClient(config)
+        elif agent_config and agent_config.api_config.provider == "moonshot":
+            print(f"🚀 创建Moonshot客户端")
+            from .moonshot_client import MoonshotClient
+            return MoonshotClient(config)
         else:
             print(f"🚀 创建默认AI客户端")
             from .client import AIClient

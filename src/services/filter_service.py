@@ -268,6 +268,10 @@ class FilterService:
             if callback and hasattr(callback, 'on_ai_ranking_complete'):
                 callback.on_ai_ranking_complete(len(ai_results), len(all_results))
 
+            # 通知所有AI评估结果（用于更新界面显示）
+            if callback and hasattr(callback, 'on_all_ai_results'):
+                callback.on_all_ai_results(all_results)
+
             # 通知AI筛选完成
             if callback:
                 callback.on_ai_complete(len(ai_results))

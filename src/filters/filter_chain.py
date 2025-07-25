@@ -323,6 +323,10 @@ class FilterChain:
         max_selected = getattr(self.ai_filter.config, 'max_selected', 3)
         ai_results = all_results[:max_selected]
 
+        # 通知所有AI评估结果（用于更新界面显示）
+        if callback and hasattr(callback, 'on_all_ai_results'):
+            callback.on_all_ai_results(all_results)
+
         result.ai_filtered_count = len(ai_results)
         return ai_results
 

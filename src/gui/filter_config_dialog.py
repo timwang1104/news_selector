@@ -256,7 +256,7 @@ class FilterConfigDialog:
         if 'provider' not in self.config_vars:
             self.config_vars['provider'] = tk.StringVar()
         provider_combo = ttk.Combobox(ai_frame, textvariable=self.config_vars['provider'],
-                                     values=["openai", "siliconflow", "volcengine", "custom"],
+                                     values=["openai", "siliconflow", "volcengine", "moonshot", "custom"],
                                      width=18, state="readonly")
         provider_combo.grid(row=0, column=1, sticky=tk.W+tk.E, padx=5, pady=5)
         provider_combo.bind("<<ComboboxSelected>>", self.on_provider_change)
@@ -959,6 +959,7 @@ class FilterConfigDialog:
                 "siliconflow": ["Qwen/Qwen2.5-72B-Instruct", "Qwen/Qwen2.5-32B-Instruct",
                                "meta-llama/Meta-Llama-3.1-70B-Instruct", "deepseek-ai/DeepSeek-V2.5"],
                 "volcengine": ["ep-20241219105006-xxxxx", "自定义Endpoint"],
+                "moonshot": ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"],
                 "custom": ["自定义模型"]
             }
 

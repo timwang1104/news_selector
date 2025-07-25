@@ -1476,7 +1476,8 @@ class MainWindow:
         progress_dialog = FilterProgressDialog(
             self.root,
             articles,
-            filter_type
+            filter_type,
+            main_window=self
         )
 
         # 获取筛选结果
@@ -1725,7 +1726,8 @@ class MainWindow:
         progress_dialog = FilterProgressDialog(
             self.root,
             displayed_articles,  # 使用当前显示的文章列表
-            filter_type
+            filter_type,
+            main_window=self
         )
 
         # 获取筛选结果
@@ -1834,13 +1836,27 @@ class MainWindow:
                 if self.filter_result and i < len(self.filter_result.selected_articles):
                     combined_result = self.filter_result.selected_articles[i]
 
-                    # 显示AI分数
+                    # 显示AI分数 - 优先从筛选结果获取，然后从缓存获取
+                    evaluation = None
                     if combined_result.ai_result and combined_result.ai_result.evaluation:
-                        ai_score = combined_result.ai_result.evaluation.total_score
+                        evaluation = combined_result.ai_result.evaluation
+                        print(f"   从筛选结果获取AI分数: {evaluation.total_score}/30")
+                    else:
+                        # 尝试从AI分析缓存获取
+                        try:
+                            from ..utils.ai_analysis_storage import ai_analysis_storage
+                            analysis_record = ai_analysis_storage.get_analysis(article)
+                            if analysis_record:
+                                evaluation = analysis_record.evaluation
+                                print(f"   从缓存获取AI分数: {evaluation.total_score}/30")
+                        except Exception as e:
+                            print(f"   获取缓存AI分数失败: {e}")
+
+                    if evaluation:
+                        ai_score = evaluation.total_score
                         ai_score_text = f"{ai_score}/30"
 
                         # 获取AI分析信息
-                        evaluation = combined_result.ai_result.evaluation
                         ai_summary = evaluation.summary[:50] + "..." if len(evaluation.summary) > 50 else evaluation.summary
                         ai_tags = ", ".join(evaluation.tags[:3])  # 显示前3个标签
 
@@ -1885,6 +1901,68 @@ class MainWindow:
 
         # 切换到文章列表标签页
         self.notebook.select(0)  # 选择第一个标签页（文章列表）
+
+    def update_all_articles_ai_scores(self, all_ai_results):
+        """更新所有文章的AI得分显示"""
+        try:
+            # 创建文章ID到评估结果的映射
+            ai_scores_map = {}
+            for result in all_ai_results:
+                if hasattr(result, 'article') and hasattr(result, 'evaluation'):
+                    article_id = result.article.id
+                    ai_scores_map[article_id] = result.evaluation
+
+            print(f"📊 准备更新 {len(ai_scores_map)} 篇文章的AI得分")
+
+            # 更新当前文章列表中的AI得分显示
+            if hasattr(self, 'article_tree') and self.article_tree:
+                # 遍历树形控件中的所有项目
+                for item in self.article_tree.get_children():
+                    try:
+                        # 获取项目对应的文章
+                        item_index = self.article_tree.index(item)
+
+                        # 根据当前显示模式获取对应的文章列表
+                        if self.display_mode == "filtered" and self.filtered_articles:
+                            if item_index < len(self.filtered_articles):
+                                article = self.filtered_articles[item_index]
+                            else:
+                                continue
+                        else:
+                            if item_index < len(self.current_articles):
+                                article = self.current_articles[item_index]
+                            else:
+                                continue
+
+                        # 检查是否有AI评估结果
+                        if article.id in ai_scores_map:
+                            evaluation = ai_scores_map[article.id]
+                            ai_score_text = f"{evaluation.total_score}/30"
+
+                            # 获取当前项目的值
+                            current_values = list(self.article_tree.item(item, 'values'))
+
+                            # 更新AI得分列（第5列，索引为4）
+                            if len(current_values) > 4:
+                                current_values[4] = ai_score_text
+                            else:
+                                # 如果列数不够，扩展列表
+                                while len(current_values) <= 4:
+                                    current_values.append("")
+                                current_values[4] = ai_score_text
+
+                            self.article_tree.item(item, values=current_values)
+
+                    except Exception as e:
+                        print(f"⚠️ 更新单个文章AI得分失败: {e}")
+                        continue
+
+            print(f"✅ AI得分更新完成")
+
+        except Exception as e:
+            print(f"❌ 更新AI得分时出错: {e}")
+            import traceback
+            traceback.print_exc()
 
     def show_filter_summary(self):
         """显示筛选结果摘要"""
