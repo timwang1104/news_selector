@@ -66,7 +66,8 @@ class RSSManager:
         ttk.Button(toolbar, text="启用/停用", command=self.toggle_feed_status).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="删除", command=self.remove_rss_subscription).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="刷新选中", command=self.refresh_selected_feed).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(toolbar, text="全部刷新", command=self.refresh_all_feeds).pack(side=tk.LEFT)
+        ttk.Button(toolbar, text="全部刷新", command=self.refresh_all_feeds).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(toolbar, text="清理旧文章", command=self.cleanup_old_articles).pack(side=tk.LEFT)
         
         # RSS订阅源列表
         tree_frame = ttk.Frame(main_frame)
@@ -216,6 +217,55 @@ class RSSManager:
         if self.selected_feed:
             self.load_feed_articles(self.selected_feed)
 
+    def cleanup_old_articles(self):
+        """清理旧的未读文章"""
+        from tkinter import simpledialog
+
+        # 询问保留天数
+        days = simpledialog.askinteger(
+            "清理设置",
+            "请输入要保留的天数（默认7天）：",
+            initialvalue=7,
+            minvalue=1,
+            maxvalue=365
+        )
+
+        if days is None:  # 用户取消
+            return
+
+        # 确认清理
+        if not messagebox.askyesno(
+            "确认清理",
+            f"确定要删除 {days} 天前的所有未读文章吗？\n\n"
+            "注意：此操作不可撤销！"
+        ):
+            return
+
+        def cleanup():
+            try:
+                removed_count, feeds_count = self.custom_rss_service.cleanup_old_unread_articles(days)
+
+                # 在主线程中更新UI
+                self.parent_frame.after(0, lambda: self._handle_cleanup_result(removed_count, feeds_count, days))
+            except Exception as e:
+                self.parent_frame.after(0, lambda: messagebox.showerror("错误", f"清理失败: {e}"))
+
+        # 在后台线程中执行
+        threading.Thread(target=cleanup, daemon=True).start()
+
+    def _handle_cleanup_result(self, removed_count: int, feeds_count: int, days: int):
+        """处理清理结果"""
+        if removed_count > 0:
+            message = f"清理完成！\n\n从 {feeds_count} 个订阅源中删除了 {removed_count} 篇 {days} 天前的未读文章。"
+            messagebox.showinfo("清理完成", message)
+
+            # 刷新界面
+            self.refresh_rss_feed_list()
+            if self.selected_feed:
+                self.load_feed_articles(self.selected_feed)
+        else:
+            messagebox.showinfo("清理完成", f"没有找到需要清理的 {days} 天前的未读文章。")
+
     def on_feed_select(self, event):
         """RSS订阅源选择事件"""
         selection = self.feed_tree.selection()
@@ -314,21 +364,9 @@ class RSSManager:
         PresetFeedsDialog(self.parent_frame, self.custom_rss_service, self.refresh_rss_feed_list)
 
     def import_from_inoreader(self):
-        """从Inoreader导入订阅源"""
-        try:
-            # 检查认证信息
-            if not self.auth or not self.auth.is_authenticated():
-                from tkinter import messagebox
-                messagebox.showwarning("未登录", "请先在主界面登录Inoreader账户")
-                return
-
-            # 打开导出导入对话框，传递刷新回调
-            from .subscription_export_dialog import SubscriptionExportDialog
-            SubscriptionExportDialog(self.parent_frame, self.auth, self.refresh_rss_feed_list)
-
-        except Exception as e:
-            from tkinter import messagebox
-            messagebox.showerror("错误", f"打开导入对话框失败: {e}")
+        """从Inoreader导入订阅源（已废弃）"""
+        from tkinter import messagebox
+        messagebox.showinfo("提示", "Inoreader导入功能已移除，请使用RSS URL直接添加订阅源")
 
     def show_feed_context_menu(self, event):
         """显示订阅源右键菜单"""

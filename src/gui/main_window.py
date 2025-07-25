@@ -7,13 +7,8 @@ import threading
 import webbrowser
 from typing import List, Optional
 
-from ..api.auth import InoreaderAuth
-from ..services.news_service import NewsService
-from ..services.subscription_service import SubscriptionService
 from ..services.filter_service import filter_service
 from ..models.news import NewsArticle
-from ..models.subscription import Subscription
-from .login_dialog import LoginDialog
 from .filter_config_dialog import FilterConfigDialog
 from .filter_progress_dialog import FilterProgressDialog, FilterMetricsDialog
 from .rss_manager import RSSManager
@@ -28,14 +23,8 @@ class MainWindow:
         self.root.title("新闻订阅工具 - News Selector")
         self.root.geometry("1200x800")
         
-        # 服务实例
-        self.auth = InoreaderAuth()
-        self.news_service = NewsService(self.auth)
-        self.subscription_service = SubscriptionService(self.auth)
-        
         # 数据
         self.current_articles: List[NewsArticle] = []
-        self.current_subscriptions: List[Subscription] = []
         self.filtered_articles: List[NewsArticle] = []  # 筛选后的文章
         self.filter_result = None  # 筛选结果
         self.display_mode = "all"  # 显示模式: "all" 或 "filtered"
@@ -46,7 +35,7 @@ class MainWindow:
 
         # 创建界面
         self.create_widgets()
-        self.update_login_status()
+        self.update_status("RSS新闻订阅工具已启动")
 
     def sync_agent_config_on_startup(self):
         """应用启动时同步Agent配置到FilterService"""
@@ -97,9 +86,6 @@ class MainWindow:
         # 文件菜单
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="文件", menu=file_menu)
-        file_menu.add_command(label="登录", command=self.login)
-        file_menu.add_command(label="登出", command=self.logout)
-        file_menu.add_separator()
         file_menu.add_command(label="退出", command=self.root.quit)
         
         # 查看菜单
@@ -125,8 +111,6 @@ class MainWindow:
         # 工具菜单
         tools_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="工具", menu=tools_menu)
-        tools_menu.add_command(label="导出Inoreader订阅源", command=self.export_inoreader_subscriptions)
-        tools_menu.add_separator()
         tools_menu.add_command(label="RSS管理", command=self.show_rss_manager)
 
         # 帮助菜单
@@ -145,9 +129,6 @@ class MainWindow:
         # 创建订阅源标签页
         self.subscription_notebook = ttk.Notebook(left_frame)
         self.subscription_notebook.pack(fill=tk.BOTH, expand=True)
-
-        # 创建Inoreader订阅标签页
-        self.create_inoreader_subscription_tab()
 
         # 创建自定义RSS标签页
         self.create_custom_rss_subscription_tab()
@@ -440,104 +421,28 @@ class MainWindow:
         self.root.update_idletasks()
 
     def update_login_status(self):
-        """更新登录状态"""
-        if self.auth.is_authenticated():
-            self.update_status("已登录")
-            self.refresh_subscriptions()
-        else:
-            self.update_status("未登录 - 请先登录")
+        """更新登录状态（已废弃）"""
+        self.update_status("RSS新闻订阅工具")
 
     def login(self):
-        """登录"""
-        if self.auth.is_authenticated():
-            messagebox.showinfo("提示", "您已经登录")
-            return
-
-        # 显示登录对话框
-        login_dialog = LoginDialog(self.root, self.auth)
-        if login_dialog.result:
-            self.update_login_status()
-            messagebox.showinfo("成功", "登录成功！")
-        else:
-            messagebox.showerror("错误", "登录失败")
+        """登录（已废弃）"""
+        messagebox.showinfo("提示", "登录功能已移除，现在使用RSS订阅功能")
 
     def logout(self):
-        """登出"""
-        if messagebox.askyesno("确认", "确定要登出吗？"):
-            self.auth.logout()
-            self.current_articles.clear()
-            self.current_subscriptions.clear()
-            self.refresh_ui()
-            self.update_status("已登出")
-            messagebox.showinfo("提示", "已登出")
+        """登出（已废弃）"""
+        messagebox.showinfo("提示", "登出功能已移除，现在使用RSS订阅功能")
 
     def refresh_subscriptions(self):
-        """刷新订阅源列表"""
-        if not self.auth.is_authenticated():
-            messagebox.showwarning("警告", "请先登录")
-            return
-
-        def load_subscriptions():
-            try:
-                self.update_status("正在刷新订阅源...")
-                # 清除订阅源相关缓存
-                self.subscription_service.refresh_subscriptions_cache()
-                subscriptions_with_unread = self.subscription_service.get_subscriptions_with_unread_counts()
-
-                # 在主线程中更新UI
-                self.root.after(0, lambda: self.update_subscription_list(subscriptions_with_unread))
-                self.root.after(0, lambda: self.update_status("订阅源已刷新"))
-            except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("错误", f"刷新订阅源失败: {e}"))
-                self.root.after(0, lambda: self.update_status("刷新订阅源失败"))
-
-        # 在后台线程中加载
-        threading.Thread(target=load_subscriptions, daemon=True).start()
+        """刷新订阅源列表（已废弃）"""
+        messagebox.showinfo("提示", "请使用RSS管理功能来管理订阅源")
 
     def update_subscription_list(self, subscriptions_with_unread):
-        """更新订阅源列表UI"""
-        # 清空现有项目
-        for item in self.subscription_tree.get_children():
-            self.subscription_tree.delete(item)
-
-        self.current_subscriptions.clear()
-
-        for item in subscriptions_with_unread:
-            subscription = item['subscription']
-            unread_count = item['unread_count']
-
-            self.current_subscriptions.append(subscription)
-
-            # 添加到树形控件
-            unread_text = str(unread_count) if unread_count > 0 else ""
-            self.subscription_tree.insert("", tk.END,
-                                        text=subscription.get_display_title(30),
-                                        values=(subscription.title, unread_text))
-
-        self.update_status(f"已加载 {len(subscriptions_with_unread)} 个订阅源")
+        """更新订阅源列表UI（已废弃）"""
+        messagebox.showinfo("提示", "请使用RSS管理功能")
 
     def refresh_news(self):
-        """刷新新闻列表"""
-        if not self.auth.is_authenticated():
-            messagebox.showwarning("警告", "请先登录")
-            return
-
-        def load_news():
-            try:
-                self.update_status("正在刷新新闻...")
-                # 清除文章相关缓存
-                self.news_service.refresh_articles_cache()
-                articles = self.news_service.get_latest_articles(count=100, exclude_read=False)
-
-                # 在主线程中更新UI
-                self.root.after(0, lambda: self.update_article_list(articles))
-                self.root.after(0, lambda: self.update_status("新闻已刷新"))
-            except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("错误", f"刷新新闻失败: {e}"))
-                self.root.after(0, lambda: self.update_status("刷新新闻失败"))
-
-        # 在后台线程中加载
-        threading.Thread(target=load_news, daemon=True).start()
+        """刷新新闻列表（已废弃）"""
+        messagebox.showinfo("提示", "请使用RSS管理功能来获取新闻")
 
     def update_article_list(self, articles: List[NewsArticle]):
         """更新文章列表UI"""
@@ -624,36 +529,8 @@ class MainWindow:
             ))
 
     def search_subscriptions(self, event=None):
-        """搜索订阅源"""
-        keyword = self.search_var.get().strip()
-        if not keyword:
-            self.refresh_subscriptions()
-            return
-
-        if not self.auth.is_authenticated():
-            messagebox.showwarning("警告", "请先登录")
-            return
-
-        def search():
-            try:
-                self.update_status(f"正在搜索订阅源: {keyword}")
-                subscriptions = self.subscription_service.search_subscriptions(keyword)
-
-                # 转换为带未读数量的格式
-                subscriptions_with_unread = []
-                unread_counts = self.subscription_service.get_unread_counts()
-
-                for sub in subscriptions:
-                    subscriptions_with_unread.append({
-                        'subscription': sub,
-                        'unread_count': unread_counts.get(sub.id, 0)
-                    })
-
-                self.root.after(0, lambda: self.update_subscription_list(subscriptions_with_unread))
-            except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("错误", f"搜索失败: {e}"))
-
-        threading.Thread(target=search, daemon=True).start()
+        """搜索订阅源（已废弃）"""
+        messagebox.showinfo("提示", "请使用RSS管理功能来搜索订阅源")
 
     def search_articles(self, event=None):
         """搜索文章"""
@@ -666,8 +543,14 @@ class MainWindow:
             messagebox.showinfo("提示", "请先加载文章")
             return
 
-        # 在当前文章中搜索
-        matched_articles = self.news_service.search_articles(keyword, self.current_articles)
+        # 在当前文章中搜索（简单的标题和内容匹配）
+        matched_articles = []
+        keyword_lower = keyword.lower()
+        for article in self.current_articles:
+            if (keyword_lower in article.title.lower() or
+                keyword_lower in (article.summary or "").lower() or
+                keyword_lower in (article.content or "").lower()):
+                matched_articles.append(article)
 
         # 清空现有项目
         for item in self.article_tree.get_children():
@@ -696,43 +579,12 @@ class MainWindow:
         self.update_status(f"找到 {len(matched_articles)} 篇相关文章")
 
     def on_subscription_select(self, event):
-        """订阅源选择事件"""
-        selection = self.subscription_tree.selection()
-        if not selection:
-            self.selected_subscription = None
-            return
+        """订阅源选择事件（已废弃）"""
+        messagebox.showinfo("提示", "请使用RSS管理功能")
 
-        # 获取选中的订阅源
-        item = self.subscription_tree.item(selection[0])
-        subscription_title = item['values'][0]
-
-        # 找到对应的订阅源对象
-        selected_subscription = None
-        for sub in self.current_subscriptions:
-            if sub.title == subscription_title:
-                selected_subscription = sub
-                break
-
-        if selected_subscription:
-            self.selected_subscription = selected_subscription  # 保存当前选中的订阅源
-            self.load_subscription_articles(selected_subscription)
-
-    def load_subscription_articles(self, subscription: Subscription):
-        """加载指定订阅源的文章"""
-        def load_articles():
-            try:
-                self.update_status(f"正在加载 {subscription.title} 的文章...")
-                articles = self.news_service.get_articles_by_feed(
-                    feed_id=subscription.id,
-                    count=50,
-                    exclude_read=False
-                )
-
-                self.root.after(0, lambda: self.update_article_list(articles))
-            except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("错误", f"加载文章失败: {e}"))
-
-        threading.Thread(target=load_articles, daemon=True).start()
+    def load_subscription_articles(self, subscription):
+        """加载指定订阅源的文章（已废弃）"""
+        messagebox.showinfo("提示", "请使用RSS管理功能来查看文章")
 
     def show_article_context_menu(self, event):
         """显示文章右键菜单"""
@@ -1275,25 +1127,8 @@ class MainWindow:
         if not self.current_article:
             return
 
-        def update_star():
-            try:
-                if self.current_article.is_starred:
-                    success = self.news_service.unstar_article(self.current_article.id)
-                    action = "移除星标"
-                else:
-                    success = self.news_service.star_article(self.current_article.id)
-                    action = "添加星标"
-
-                if success:
-                    self.current_article.is_starred = not self.current_article.is_starred
-                    self.root.after(0, lambda: self.update_star_button())
-                    self.root.after(0, lambda: self.update_status(f"{action}成功"))
-                else:
-                    self.root.after(0, lambda: messagebox.showerror("错误", f"{action}失败"))
-            except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("错误", f"{action}失败: {e}"))
-
-        threading.Thread(target=update_star, daemon=True).start()
+        # 星标功能已废弃
+        messagebox.showinfo("提示", "星标功能已移除")
 
     def update_star_button(self):
         """更新星标按钮"""
@@ -1302,14 +1137,8 @@ class MainWindow:
 
     def mark_article_read(self, article: NewsArticle):
         """标记文章为已读"""
-        def mark_read():
-            try:
-                if self.news_service.mark_article_as_read(article.id):
-                    article.is_read = True
-            except Exception:
-                pass  # 静默失败
-
-        threading.Thread(target=mark_read, daemon=True).start()
+        # 简单地标记为已读，不调用API
+        article.is_read = True
 
     def mark_as_read(self):
         """标记为已读"""
@@ -1321,18 +1150,10 @@ class MainWindow:
         if item_index < len(self.current_articles):
             article = self.current_articles[item_index]
 
-            def mark_read():
-                try:
-                    if self.news_service.mark_article_as_read(article.id):
-                        article.is_read = True
-                        self.root.after(0, self.filter_articles)
-                        self.root.after(0, lambda: self.update_status("标记为已读"))
-                    else:
-                        self.root.after(0, lambda: messagebox.showerror("错误", "标记失败"))
-                except Exception as e:
-                    self.root.after(0, lambda: messagebox.showerror("错误", f"标记失败: {e}"))
-
-            threading.Thread(target=mark_read, daemon=True).start()
+            # 简单地标记为已读
+            article.is_read = True
+            self.filter_articles()
+            self.update_status("标记为已读")
 
     def view_ai_analysis(self):
         """查看文章的AI分析结果"""
@@ -1407,18 +1228,10 @@ class MainWindow:
         if item_index < len(self.current_articles):
             article = self.current_articles[item_index]
 
-            def mark_unread():
-                try:
-                    if self.news_service.mark_article_as_unread(article.id):
-                        article.is_read = False
-                        self.root.after(0, self.filter_articles)
-                        self.root.after(0, lambda: self.update_status("标记为未读"))
-                    else:
-                        self.root.after(0, lambda: messagebox.showerror("错误", "标记失败"))
-                except Exception as e:
-                    self.root.after(0, lambda: messagebox.showerror("错误", f"标记失败: {e}"))
-
-            threading.Thread(target=mark_unread, daemon=True).start()
+            # 简单地标记为未读
+            article.is_read = False
+            self.filter_articles()
+            self.update_status("标记为未读")
 
     def show_statistics(self):
         """显示统计信息"""
@@ -1480,36 +1293,23 @@ class MainWindow:
         """显示关于对话框"""
         about_text = """新闻订阅工具 v0.1.0
 
-基于Inoreader API的新闻订阅和管理工具
+基于自定义RSS的新闻订阅和管理工具
 
 功能特性:
-• OAuth2认证登录
-• 获取订阅源列表
-• 获取最新文章
+• RSS订阅源管理
+• 智能文章筛选
+• AI文章分析
+• 批量筛选处理
 • 文章搜索和过滤
-• 星标管理
-• 统计信息
+• 多种筛选算法
 
 开发: News Selector Team
 """
         messagebox.showinfo("关于", about_text)
 
     def export_inoreader_subscriptions(self):
-        """导出Inoreader订阅源"""
-        if not self.auth or not self.auth.is_authenticated():
-            messagebox.showwarning("未登录", "请先登录Inoreader账户")
-            return
-
-        try:
-            from .subscription_export_dialog import SubscriptionExportDialog
-            # 传递RSS管理器的刷新回调
-            refresh_callback = None
-            if hasattr(self, 'rss_manager') and self.rss_manager:
-                refresh_callback = self.rss_manager.refresh_rss_feed_list
-
-            SubscriptionExportDialog(self.root, self.auth, refresh_callback)
-        except Exception as e:
-            messagebox.showerror("错误", f"打开导出对话框失败: {e}")
+        """导出Inoreader订阅源（已废弃）"""
+        messagebox.showinfo("提示", "Inoreader导出功能已移除，请使用RSS管理功能")
 
     def show_rss_manager(self):
         """显示RSS管理器"""
@@ -1526,9 +1326,7 @@ class MainWindow:
 
     def refresh_ui(self):
         """刷新整个UI"""
-        # 清空订阅源列表
-        for item in self.subscription_tree.get_children():
-            self.subscription_tree.delete(item)
+        # 订阅源列表已移除
 
         # 清空文章列表
         for item in self.article_tree.get_children():
@@ -1541,7 +1339,6 @@ class MainWindow:
         self.current_article = None
 
         # 重置搜索框
-        self.search_var.set("")
         self.article_search_var.set("")
         self.filter_var.set("all")
 
@@ -1599,59 +1396,48 @@ class MainWindow:
     def filter_single_subscription(self, subscription, filter_type):
         """筛选单个订阅源"""
         try:
-            # 检查是否是RSS订阅源
-            if subscription.id.startswith("rss_"):
-                # RSS订阅源处理
-                self.update_status(f"正在获取RSS订阅源 {subscription.title} 的文章...")
+            # 直接从RSS管理器获取当前选中的RSS订阅源
+            if hasattr(self, 'rss_manager') and self.rss_manager.selected_feed:
+                rss_feed = self.rss_manager.selected_feed
+                self.update_status(f"正在获取RSS订阅源 {rss_feed.title} 的文章...")
 
-                # 从RSS管理器获取文章
-                if hasattr(self, 'rss_manager') and self.rss_manager.selected_feed:
-                    rss_feed = self.rss_manager.selected_feed
-                    rss_articles = rss_feed.articles
+                rss_articles = rss_feed.articles
 
-                    if not rss_articles:
-                        messagebox.showinfo("提示", f"RSS订阅源 {subscription.title} 没有可筛选的文章")
-                        return
-
-                    # 将RSS文章转换为NewsArticle格式
-                    from ..models.news import NewsArticle, NewsAuthor
-                    articles = []
-                    for rss_article in rss_articles:
-                        if not rss_article.is_read:  # 只处理未读文章
-                            news_article = NewsArticle(
-                                id=rss_article.id,
-                                title=rss_article.title,
-                                summary=rss_article.summary or "",
-                                content=rss_article.content or rss_article.summary or "",
-                                url=rss_article.url,
-                                published=rss_article.published,
-                                updated=rss_article.published,  # RSS文章通常没有更新时间，使用发布时间
-                                author=NewsAuthor(name=rss_article.author or "未知作者") if rss_article.author else None,
-                                categories=[],
-                                is_read=rss_article.is_read,
-                                is_starred=False,
-                                feed_title=rss_feed.title
-                            )
-                            articles.append(news_article)
-                else:
-                    messagebox.showwarning("警告", "无法获取RSS订阅源文章")
+                if not rss_articles:
+                    messagebox.showinfo("提示", f"RSS订阅源 {rss_feed.title} 没有可筛选的文章")
                     return
+
+                # 将RSS文章转换为NewsArticle格式
+                from ..models.news import NewsArticle, NewsAuthor
+                articles = []
+                for rss_article in rss_articles:
+                    if not rss_article.is_read:  # 只处理未读文章
+                        news_article = NewsArticle(
+                            id=rss_article.id,
+                            title=rss_article.title,
+                            summary=rss_article.summary or "",
+                            content=rss_article.content or rss_article.summary or "",
+                            url=rss_article.url,
+                            published=rss_article.published,
+                            updated=rss_article.published,  # RSS文章通常没有更新时间，使用发布时间
+                            author=NewsAuthor(name=rss_article.author or "未知作者") if rss_article.author else None,
+                            categories=[],
+                            is_read=rss_article.is_read,
+                            is_starred=False,
+                            feed_title=rss_feed.title
+                        )
+                        articles.append(news_article)
+
+                if not articles:
+                    messagebox.showinfo("提示", f"RSS订阅源 {rss_feed.title} 没有可筛选的未读文章")
+                    return
+
+                # 执行筛选
+                self.update_status(f"开始筛选 {rss_feed.title} 的 {len(articles)} 篇文章...")
+                self.quick_filter_with_articles(articles, filter_type)
             else:
-                # Inoreader订阅源处理
-                self.update_status(f"正在获取 {subscription.title} 的文章...")
-                articles = self.news_service.get_articles_by_feed(
-                    feed_id=subscription.id,
-                    count=50,  # 获取最近50篇文章
-                    exclude_read=True
-                )
-
-            if not articles:
-                messagebox.showinfo("提示", f"订阅源 {subscription.title} 没有可筛选的文章")
+                messagebox.showwarning("警告", "请先在RSS管理器中选择要筛选的订阅源")
                 return
-
-            # 执行筛选
-            self.update_status(f"开始筛选 {subscription.title} 的 {len(articles)} 篇文章...")
-            self.quick_filter_with_articles(articles, filter_type)
 
         except Exception as e:
             messagebox.showerror("错误", f"筛选订阅源失败: {e}")
@@ -1763,19 +1549,10 @@ class MainWindow:
         try:
             from .batch_filter_progress_dialog import BatchFilterProgressDialog
 
-            # 根据当前活动的标签页选择合适的批量筛选管理器
-            current_tab = self.subscription_notebook.tab(self.subscription_notebook.select(), "text")
-
-            if current_tab == "自定义RSS":
-                # 使用自定义RSS批量筛选管理器
-                from ..services.batch_filter_service import custom_rss_batch_filter_manager
-                manager = custom_rss_batch_filter_manager
-                print("使用自定义RSS批量筛选管理器")
-            else:
-                # 使用Inoreader批量筛选管理器
-                from ..services.batch_filter_service import BatchFilterManager
-                manager = BatchFilterManager(self.auth)
-                print("使用Inoreader批量筛选管理器")
+            # 使用自定义RSS批量筛选管理器
+            from ..services.batch_filter_service import custom_rss_batch_filter_manager
+            manager = custom_rss_batch_filter_manager
+            print("使用自定义RSS批量筛选管理器")
 
             # 创建进度对话框
             progress_dialog = BatchFilterProgressDialog(self.root)
@@ -2208,211 +1985,39 @@ AI筛选通过: {result.ai_filtered_count}
         self.filter_articles()  # 重新显示所有文章
 
     def clear_cache(self):
-        """清除所有缓存"""
-        if not self.auth.is_authenticated():
-            messagebox.showwarning("警告", "请先登录")
-            return
-
-        try:
-            # 询问用户确认
-            if messagebox.askyesno("确认", "确定要清除所有缓存吗？\n这将删除所有已缓存的数据。"):
-                self.news_service.refresh_cache()
-                self.subscription_service.refresh_cache()
-                messagebox.showinfo("成功", "缓存已清除")
-                self.update_status("缓存已清除")
-        except Exception as e:
-            messagebox.showerror("错误", f"清除缓存失败: {e}")
+        """清除所有缓存（已废弃）"""
+        messagebox.showinfo("提示", "缓存功能已移除")
 
     def show_cache_status(self):
-        """显示缓存状态"""
-        if not self.auth.is_authenticated():
-            messagebox.showwarning("警告", "请先登录")
-            return
+        """显示缓存状态（已废弃）"""
+        messagebox.showinfo("提示", "缓存功能已移除")
 
-        try:
-            # 获取缓存信息
-            news_cache_info = self.news_service.get_cache_info()
-            sub_cache_info = self.subscription_service.get_cache_info()
 
-            # 创建状态窗口
-            status_window = tk.Toplevel(self.root)
-            status_window.title("缓存和API状态")
-            status_window.geometry("600x500")
-            status_window.resizable(True, True)
 
-            # 创建滚动文本框
-            text_frame = ttk.Frame(status_window)
-            text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+    def show_all_articles(self):
+        """显示所有文章"""
+        self.display_mode = "all"
+        self.filter_var.set("all")
 
-            text_widget = tk.Text(text_frame, wrap=tk.WORD, state=tk.DISABLED)
-            scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=text_widget.yview)
-            text_widget.configure(yscrollcommand=scrollbar.set)
-
-            text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-            # 格式化状态信息
-            status_text = self._format_cache_status(news_cache_info, sub_cache_info)
-
-            text_widget.config(state=tk.NORMAL)
-            text_widget.insert(tk.END, status_text)
-            text_widget.config(state=tk.DISABLED)
-
-            # 添加按钮
-            button_frame = ttk.Frame(status_window)
-            button_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
-
-            ttk.Button(button_frame, text="刷新状态",
-                      command=lambda: self._refresh_cache_status(text_widget, news_cache_info, sub_cache_info)).pack(side=tk.LEFT, padx=(0, 5))
-            ttk.Button(button_frame, text="清除缓存",
-                      command=lambda: self._clear_cache_from_status(status_window)).pack(side=tk.LEFT, padx=(0, 5))
-            ttk.Button(button_frame, text="关闭",
-                      command=status_window.destroy).pack(side=tk.RIGHT)
-
-        except Exception as e:
-            messagebox.showerror("错误", f"获取缓存状态失败: {e}")
-
-    def _format_cache_status(self, news_cache_info: dict, sub_cache_info: dict) -> str:
-        """格式化缓存状态信息"""
-        lines = []
-        lines.append("=" * 60)
-        lines.append("📊 缓存和API状态信息")
-        lines.append("=" * 60)
-
-        # API区域信息
-        current_region = news_cache_info.get('current_region', {})
-        lines.append(f"\n🌍 当前API区域:")
-        lines.append(f"   名称: {current_region.get('name', '未知')}")
-        lines.append(f"   描述: {current_region.get('description', '未知')}")
-        lines.append(f"   URL: {current_region.get('base_url', '未知')}")
-        lines.append(f"   切换次数: {current_region.get('switch_attempts', 0)}")
-
-        # 缓存统计
-        cache_stats = news_cache_info.get('cache_stats', {})
-        lines.append(f"\n💾 缓存统计:")
-        lines.append(f"   缓存状态: {'启用' if cache_stats.get('enabled', False) else '禁用'}")
-        lines.append(f"   缓存文件数: {cache_stats.get('total_files', 0)}")
-        lines.append(f"   有效文件数: {cache_stats.get('valid_files', 0)}")
-        lines.append(f"   缓存大小: {cache_stats.get('total_size_mb', 0)} MB")
-        lines.append(f"   最大大小: {cache_stats.get('max_size_mb', 0)} MB")
-        lines.append(f"   过期时间: {cache_stats.get('expire_hours', 0)} 小时")
-        lines.append(f"   缓存目录: {cache_stats.get('cache_dir', '未知')}")
-
-        # 服务状态
-        lines.append(f"\n🔧 服务状态:")
-        lines.append(f"   新闻服务缓存: {'启用' if news_cache_info.get('cache_enabled', False) else '禁用'}")
-        lines.append(f"   订阅服务缓存: {'启用' if sub_cache_info.get('cache_enabled', False) else '禁用'}")
-
-        return "\n".join(lines)
-
-    def _refresh_cache_status(self, text_widget, news_cache_info, sub_cache_info):
-        """刷新缓存状态显示"""
-        try:
-            # 重新获取状态信息
-            news_cache_info = self.news_service.get_cache_info()
-            sub_cache_info = self.subscription_service.get_cache_info()
-
-            # 更新显示
-            status_text = self._format_cache_status(news_cache_info, sub_cache_info)
-
-            text_widget.config(state=tk.NORMAL)
-            text_widget.delete(1.0, tk.END)
-            text_widget.insert(tk.END, status_text)
-            text_widget.config(state=tk.DISABLED)
-
-        except Exception as e:
-            messagebox.showerror("错误", f"刷新状态失败: {e}")
-
-    def _clear_cache_from_status(self, parent_window):
-        """从状态窗口清除缓存"""
-        if messagebox.askyesno("确认", "确定要清除所有缓存吗？", parent=parent_window):
-            try:
-                self.news_service.refresh_cache()
-                self.subscription_service.refresh_cache()
-                messagebox.showinfo("成功", "缓存已清除", parent=parent_window)
-                # 刷新状态显示
-                parent_window.destroy()
-                self.show_cache_status()
-            except Exception as e:
-                messagebox.showerror("错误", f"清除缓存失败: {e}", parent=parent_window)
+        self.filter_articles()  # 重新显示所有文章
         self.update_status(f"显示所有文章: {len(self.current_articles)} 篇")
 
-    def create_inoreader_subscription_tab(self):
-        """创建Inoreader订阅标签页"""
-        inoreader_frame = ttk.Frame(self.subscription_notebook)
-        self.subscription_notebook.add(inoreader_frame, text="Inoreader订阅")
 
-        # 搜索框
-        search_frame = ttk.Frame(inoreader_frame)
-        search_frame.pack(fill=tk.X, pady=(0, 10))
-
-        ttk.Label(search_frame, text="搜索:").pack(side=tk.LEFT)
-        self.search_var = tk.StringVar()
-        search_entry = ttk.Entry(search_frame, textvariable=self.search_var)
-        search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 0))
-        search_entry.bind('<Return>', self.search_subscriptions)
-
-        # 订阅源列表
-        list_frame = ttk.Frame(inoreader_frame)
-        list_frame.pack(fill=tk.BOTH, expand=True)
-
-        # 创建Treeview用于显示订阅源
-        columns = ("title", "unread")
-        self.subscription_tree = ttk.Treeview(list_frame, columns=columns, show="tree headings", height=15)
-
-        # 设置列
-        self.subscription_tree.heading("#0", text="订阅源")
-        self.subscription_tree.heading("title", text="标题")
-        self.subscription_tree.heading("unread", text="未读")
-
-        self.subscription_tree.column("#0", width=200)
-        self.subscription_tree.column("title", width=150)
-        self.subscription_tree.column("unread", width=50)
-
-        # 添加滚动条
-        sub_scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.subscription_tree.yview)
-        self.subscription_tree.configure(yscrollcommand=sub_scrollbar.set)
-
-        self.subscription_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        sub_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        # 绑定选择事件
-        self.subscription_tree.bind("<<TreeviewSelect>>", self.on_subscription_select)
-
-        # 按钮框架
-        button_frame = ttk.Frame(inoreader_frame)
-        button_frame.pack(fill=tk.X, pady=(10, 0))
-
-        ttk.Button(button_frame, text="刷新订阅源", command=self.refresh_subscriptions).pack(fill=tk.X, pady=(0, 5))
-        ttk.Button(button_frame, text="获取最新新闻", command=self.refresh_news).pack(fill=tk.X)
 
     def create_custom_rss_subscription_tab(self):
         """创建自定义RSS订阅标签页"""
         rss_frame = ttk.Frame(self.subscription_notebook)
         self.subscription_notebook.add(rss_frame, text="自定义RSS")
 
-        # 创建RSS管理器，传入文章回调函数、订阅源选择回调和认证信息
-        self.rss_manager = RSSManager(rss_frame, self.on_rss_articles_loaded, self.auth, self.on_rss_subscription_selected)
+        # 创建RSS管理器，传入文章回调函数、订阅源选择回调
+        self.rss_manager = RSSManager(rss_frame, self.on_rss_articles_loaded, None, self.on_rss_subscription_selected)
 
     def on_rss_subscription_selected(self, rss_feed):
         """处理RSS订阅源选择事件"""
-        # 将RSS订阅源转换为Subscription格式并设置为当前选中的订阅源
-        from ..models.subscription import Subscription
-
+        # RSS订阅源选择处理
         if rss_feed:
-            # 创建一个模拟的Subscription对象来兼容现有的筛选逻辑
-            subscription = Subscription(
-                id=f"rss_{rss_feed.id}",  # 添加前缀以区分RSS订阅源
-                title=rss_feed.title,
-                url=rss_feed.url,
-                html_url=rss_feed.link or rss_feed.url,
-                icon_url=None,
-                categories=[],
-                first_item_msec=None,
-                sort_id=None
-            )
-            self.selected_subscription = subscription
-            print(f"🔄 RSS订阅源已选中: {subscription.title}")
+            self.selected_subscription = rss_feed
+            print(f"🔄 RSS订阅源已选中: {rss_feed.title}")
         else:
             self.selected_subscription = None
             print("🔄 RSS订阅源选择已清除")

@@ -4,11 +4,9 @@
 import click
 from typing import Optional
 
-from ..api.auth import InoreaderAuth
-from ..services.news_service import NewsService
-from ..services.subscription_service import SubscriptionService
 from ..services.filter_service import filter_service, CLIProgressCallback
-from ..services.batch_filter_service import batch_filter_manager, BatchFilterConfig, CLIBatchProgressCallback
+from ..services.batch_filter_service import custom_rss_batch_filter_manager, BatchFilterConfig
+from ..services.custom_rss_service import CustomRSSService
 from ..utils.result_formatter import ResultFormatter, ResultExporter
 from ..models.news import NewsArticle
 
@@ -16,242 +14,226 @@ from ..models.news import NewsArticle
 @click.group()
 @click.version_option(version="0.1.0")
 def cli():
-    """新闻订阅工具 - 基于Inoreader API的新闻获取和管理工具"""
+    """新闻订阅工具 - 基于自定义RSS的新闻获取和管理工具"""
     pass
 
 
 @cli.command()
-def login():
-    """用户登录认证"""
-    auth = InoreaderAuth()
-    
-    if auth.is_authenticated():
-        click.echo("✅ 您已经登录")
-        return
-    
-    click.echo("🔐 开始登录流程...")
-    
-    if auth.start_auth_flow():
-        click.echo("✅ 登录成功！")
+@click.argument('url')
+@click.option('--category', '-c', default='默认', help='RSS分类 (默认: 默认)')
+def add_rss(url: str, category: str):
+    """添加RSS订阅源"""
+    rss_service = CustomRSSService()
+
+    click.echo(f"📡 正在添加RSS订阅源: {url}")
+
+    success, message = rss_service.add_subscription(url, category)
+
+    if success:
+        click.echo(f"✅ {message}")
     else:
-        click.echo("❌ 登录失败")
+        click.echo(f"❌ {message}")
 
 
 @cli.command()
-def logout():
-    """用户登出"""
-    auth = InoreaderAuth()
-    auth.logout()
-    click.echo("✅ 已登出")
+def list_rss():
+    """显示RSS订阅源列表"""
+    rss_service = CustomRSSService()
 
+    feeds = rss_service.get_all_subscriptions()
 
-@cli.command()
-def status():
-    """显示登录状态和用户信息"""
-    auth = InoreaderAuth()
-    
-    if not auth.is_authenticated():
-        click.echo("❌ 未登录，请先运行 'login' 命令")
+    if not feeds:
+        click.echo("📭 没有找到RSS订阅源")
         return
-    
-    click.echo("✅ 已登录")
-    
-    # 获取用户信息
-    subscription_service = SubscriptionService()
-    user_info = subscription_service.get_user_info()
-    
-    if user_info:
-        click.echo(f"👤 用户: {user_info.get('userName', 'Unknown')}")
-        click.echo(f"📧 邮箱: {user_info.get('userEmail', 'Unknown')}")
+
+    click.echo(f"\n📊 RSS订阅源列表 (共 {len(feeds)} 个):")
+    click.echo("-" * 80)
+
+    for feed in feeds:
+        status = "✅ 激活" if feed.is_active else "❌ 未激活"
+        click.echo(f"📡 {feed.title} [{status}]")
+        click.echo(f"   🔗 {feed.url}")
+        click.echo(f"   🏷️  分类: {feed.category}")
+        click.echo(f"   📰 文章数: {len(feed.articles)}")
+        if feed.last_fetched:
+            click.echo(f"   🕒 最后更新: {feed.last_fetched.strftime('%Y-%m-%d %H:%M:%S')}")
+        click.echo()
 
 
 @cli.command()
-@click.option('--count', '-c', default=20, help='文章数量 (默认: 20)')
+@click.option('--category', '-c', help='按分类筛选')
 @click.option('--unread-only', '-u', is_flag=True, help='仅显示未读文章')
 @click.option('--hours', '-h', type=int, help='显示多少小时内的文章')
-def news(count: int, unread_only: bool, hours: Optional[int]):
-    """获取最新新闻"""
-    auth = InoreaderAuth()
-    
-    if not auth.is_authenticated():
-        click.echo("❌ 未登录，请先运行 'login' 命令")
-        return
-    
-    news_service = NewsService()
-    
-    click.echo("📰 正在获取最新新闻...")
-    
-    articles = news_service.get_latest_articles(
-        count=count,
-        exclude_read=unread_only,
+def rss_news(category: Optional[str], unread_only: bool, hours: Optional[int]):
+    """获取RSS新闻文章"""
+    rss_service = CustomRSSService()
+
+    click.echo("📰 正在获取RSS新闻...")
+
+    articles = rss_service.get_all_articles(
+        category=category,
+        unread_only=unread_only,
         hours_back=hours
     )
-    
+
     if not articles:
         click.echo("📭 没有找到文章")
         return
-    
+
+    click.echo(f"✅ 获取到 {len(articles)} 篇文章")
+
     # 显示文章列表
-    _display_articles(articles)
+    _display_rss_articles(articles)
 
 
 @cli.command()
-@click.option('--count', '-c', default=10, help='文章数量 (默认: 10)')
-def starred(count: int):
-    """获取星标文章"""
-    auth = InoreaderAuth()
-    
-    if not auth.is_authenticated():
-        click.echo("❌ 未登录，请先运行 'login' 命令")
+def refresh_rss():
+    """刷新所有RSS订阅源"""
+    rss_service = CustomRSSService()
+
+    click.echo("🔄 正在刷新所有RSS订阅源...")
+
+    results = rss_service.refresh_all_feeds()
+
+    if not results:
+        click.echo("📭 没有找到激活的RSS订阅源")
         return
-    
-    news_service = NewsService()
-    
-    click.echo("⭐ 正在获取星标文章...")
-    
-    articles = news_service.get_starred_articles(count=count)
-    
-    if not articles:
-        click.echo("📭 没有找到星标文章")
-        return
-    
-    _display_articles(articles)
+
+    total_new_articles = 0
+    success_count = 0
+
+    for feed_id, (success, message, new_count) in results.items():
+        if success:
+            success_count += 1
+            total_new_articles += new_count
+            click.echo(f"✅ {message} (新增 {new_count} 篇文章)")
+        else:
+            click.echo(f"❌ {message}")
+
+    click.echo(f"\n📊 刷新完成: {success_count}/{len(results)} 个订阅源成功，共获取 {total_new_articles} 篇新文章")
 
 
 @cli.command()
-@click.argument('keyword')
-@click.option('--count', '-c', default=50, help='搜索范围内的文章数量 (默认: 50)')
-def search(keyword: str, count: int):
-    """搜索文章"""
-    auth = InoreaderAuth()
+@click.option('--days', '-d', default=7, help='保留天数 (默认: 7天)')
+@click.option('--dry-run', is_flag=True, help='仅显示将要删除的文章数量，不实际删除')
+def cleanup_old(days: int, dry_run: bool):
+    """清理指定天数之前的未读文章"""
+    rss_service = CustomRSSService()
 
-    if not auth.is_authenticated():
-        click.echo("❌ 未登录，请先运行 'login' 命令")
-        return
+    if dry_run:
+        click.echo(f"🔍 检查 {days} 天前的未读文章...")
+        # 这里可以添加预览功能，暂时简化
+        click.echo("使用 --dry-run 功能需要额外实现，当前直接显示清理结果")
 
-    news_service = NewsService()
+    click.echo(f"🧹 正在清理 {days} 天前的未读文章...")
 
-    click.echo(f"🔍 正在搜索包含 '{keyword}' 的文章...")
+    removed_count, feeds_count = rss_service.cleanup_old_unread_articles(days)
 
-    # 先获取最新文章，然后在其中搜索
-    latest_articles = news_service.get_latest_articles(count=count, exclude_read=False)
-    articles = news_service.search_articles(keyword, latest_articles)
-
-    if not articles:
-        click.echo(f"📭 没有找到包含 '{keyword}' 的文章")
-        return
-
-    click.echo(f"🎯 找到 {len(articles)} 篇相关文章:")
-    _display_articles(articles)
-
-
-@cli.command()
-@click.argument('feed_name')
-@click.option('--count', '-c', default=20, help='文章数量 (默认: 20)')
-@click.option('--unread-only', '-u', is_flag=True, help='仅显示未读文章')
-def feed(feed_name: str, count: int, unread_only: bool):
-    """获取指定订阅源的文章"""
-    auth = InoreaderAuth()
-
-    if not auth.is_authenticated():
-        click.echo("❌ 未登录，请先运行 'login' 命令")
-        return
-
-    subscription_service = SubscriptionService()
-    news_service = NewsService()
-
-    # 搜索匹配的订阅源
-    subscriptions = subscription_service.search_subscriptions(feed_name)
-
-    if not subscriptions:
-        click.echo(f"❌ 没有找到包含 '{feed_name}' 的订阅源")
-        return
-
-    if len(subscriptions) > 1:
-        click.echo(f"🔍 找到 {len(subscriptions)} 个匹配的订阅源:")
-        for i, sub in enumerate(subscriptions, 1):
-            click.echo(f"  {i}. {sub.title}")
-
-        choice = click.prompt("请选择订阅源编号", type=int)
-        if choice < 1 or choice > len(subscriptions):
-            click.echo("❌ 无效的选择")
-            return
-
-        selected_subscription = subscriptions[choice - 1]
+    if removed_count > 0:
+        click.echo(f"✅ 清理完成: 从 {feeds_count} 个订阅源中删除了 {removed_count} 篇旧的未读文章")
     else:
-        selected_subscription = subscriptions[0]
-
-    click.echo(f"📰 正在获取 '{selected_subscription.title}' 的文章...")
-
-    articles = news_service.get_articles_by_feed(
-        feed_id=selected_subscription.id,
-        count=count,
-        exclude_read=unread_only
-    )
-
-    if not articles:
-        click.echo("📭 没有找到文章")
-        return
-
-    _display_articles(articles)
+        click.echo("📭 没有找到需要清理的旧未读文章")
 
 
 @cli.command()
-@click.option('--with-unread', '-u', is_flag=True, help='显示未读数量')
-def feeds(with_unread: bool):
-    """显示订阅源列表"""
-    auth = InoreaderAuth()
-    
-    if not auth.is_authenticated():
-        click.echo("❌ 未登录，请先运行 'login' 命令")
-        return
-    
-    subscription_service = SubscriptionService()
-    
-    click.echo("📡 正在获取订阅源列表...")
-    
-    if with_unread:
-        feeds_with_unread = subscription_service.get_subscriptions_with_unread_counts()
-        
-        if not feeds_with_unread:
-            click.echo("📭 没有找到订阅源")
-            return
-        
-        click.echo(f"\n📊 订阅源列表 (共 {len(feeds_with_unread)} 个):")
-        click.echo("-" * 80)
-        
-        for item in feeds_with_unread:
-            subscription = item['subscription']
-            unread_count = item['unread_count']
-            
-            unread_indicator = f"({unread_count} 未读)" if unread_count > 0 else ""
-            click.echo(f"📡 {subscription.get_display_title(60)} {unread_indicator}")
-            
-            if subscription.categories:
-                categories = ", ".join(subscription.get_category_names())
-                click.echo(f"   🏷️  分类: {categories}")
-            
-            click.echo(f"   🔗 {subscription.url}")
-            click.echo()
+def cleanup_status():
+    """显示清理状态和统计信息"""
+    rss_service = CustomRSSService()
+
+    click.echo("📊 清理状态统计:")
+    click.echo("-" * 50)
+
+    # 统计各个时间段的未读文章
+    from datetime import datetime, timezone, timedelta
+
+    now = datetime.now(timezone.utc)
+    one_day_ago = now - timedelta(days=1)
+    one_week_ago = now - timedelta(days=7)
+    one_month_ago = now - timedelta(days=30)
+
+    all_articles = rss_service.get_all_articles(unread_only=True)
+
+    recent_count = len([a for a in all_articles if a.published > one_day_ago])
+    week_count = len([a for a in all_articles if a.published > one_week_ago])
+    month_count = len([a for a in all_articles if a.published > one_month_ago])
+    old_count = len([a for a in all_articles if a.published <= one_week_ago])
+
+    click.echo(f"📰 未读文章统计:")
+    click.echo(f"   最近1天: {recent_count} 篇")
+    click.echo(f"   最近1周: {week_count} 篇")
+    click.echo(f"   最近1月: {month_count} 篇")
+    click.echo(f"   1周前的: {old_count} 篇 (将被自动清理)")
+
+    # 检查上次清理时间
+    from pathlib import Path
+    last_cleanup_file = Path.home() / ".news_selector" / "last_cleanup.txt"
+
+    if last_cleanup_file.exists():
+        try:
+            with open(last_cleanup_file, 'r') as f:
+                last_cleanup_str = f.read().strip()
+                last_cleanup = datetime.fromisoformat(last_cleanup_str)
+                time_since = now - last_cleanup
+
+                click.echo(f"\n🕒 上次自动清理: {last_cleanup.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+                click.echo(f"   距今: {time_since.days} 天 {time_since.seconds // 3600} 小时")
+        except Exception:
+            click.echo(f"\n🕒 上次自动清理: 无法读取记录")
     else:
-        subscriptions = subscription_service.get_all_subscriptions()
-        
-        if not subscriptions:
-            click.echo("📭 没有找到订阅源")
-            return
-        
-        click.echo(f"\n📊 订阅源列表 (共 {len(subscriptions)} 个):")
-        click.echo("-" * 80)
-        
-        for subscription in subscriptions:
-            click.echo(f"📡 {subscription.title}")
-            
-            if subscription.categories:
-                categories = ", ".join(subscription.get_category_names())
-                click.echo(f"   🏷️  分类: {categories}")
-            
-            click.echo(f"   🔗 {subscription.url}")
-            click.echo()
+        click.echo(f"\n🕒 上次自动清理: 从未执行")
+
+
+def _display_rss_articles(articles):
+    """显示RSS文章列表"""
+    click.echo("\n📋 文章列表:")
+    click.echo("=" * 80)
+
+    for i, article in enumerate(articles, 1):
+        # 状态指示器
+        read_status = "✅" if article.is_read else "📰"
+        star_status = "⭐" if article.is_starred else ""
+
+        click.echo(f"{i:3d}. {read_status} {article.get_display_title(60)} {star_status}")
+        click.echo(f"     🔗 {article.url}")
+        click.echo(f"     📅 {article.published.strftime('%Y-%m-%d %H:%M')}")
+
+        if article.author:
+            click.echo(f"     👤 {article.author}")
+
+        # 显示摘要（限制长度）
+        if article.summary:
+            summary = article.summary[:100] + "..." if len(article.summary) > 100 else article.summary
+            click.echo(f"     📝 {summary}")
+
+        click.echo()
+
+
+def _display_articles(articles):
+    """显示NewsArticle文章列表"""
+    click.echo("\n📋 文章列表:")
+    click.echo("=" * 80)
+
+    for i, article in enumerate(articles, 1):
+        # 状态指示器
+        read_status = "✅" if article.is_read else "📰"
+        star_status = "⭐" if article.is_starred else ""
+
+        click.echo(f"{i:3d}. {read_status} {article.get_display_title(60)} {star_status}")
+        click.echo(f"     🔗 {article.url}")
+        click.echo(f"     📅 {article.published.strftime('%Y-%m-%d %H:%M')}")
+
+        if article.author:
+            click.echo(f"     👤 {article.author.name}")
+
+        if article.feed_title:
+            click.echo(f"     📡 {article.feed_title}")
+
+        # 显示摘要（限制长度）
+        if article.summary:
+            summary = article.summary[:100] + "..." if len(article.summary) > 100 else article.summary
+            click.echo(f"     📝 {summary}")
+
+        click.echo()
 
 
 @cli.command()
@@ -259,25 +241,44 @@ def feeds(with_unread: bool):
 @click.option('--filter-type', '-t', default='chain',
               type=click.Choice(['keyword', 'ai', 'chain']),
               help='筛选类型: keyword(关键词), ai(AI), chain(组合筛选, 默认)')
+@click.option('--category', '-cat', help='按分类筛选RSS文章')
 @click.option('--show-progress', '-p', is_flag=True, help='显示筛选进度')
 @click.option('--show-details', '-d', is_flag=True, help='显示筛选详情')
-def filter_news(count: int, filter_type: str, show_progress: bool, show_details: bool):
-    """智能筛选新闻文章"""
-    auth = InoreaderAuth()
+def filter_rss(count: int, filter_type: str, category: Optional[str], show_progress: bool, show_details: bool):
+    """智能筛选RSS新闻文章"""
+    rss_service = CustomRSSService()
 
-    if not auth.is_authenticated():
-        click.echo("❌ 未登录，请先运行 'login' 命令")
+    # 获取RSS文章
+    click.echo(f"📰 正在获取RSS文章...")
+    rss_articles = rss_service.get_all_articles(
+        category=category,
+        unread_only=True,  # 只处理未读文章
+        hours_back=24  # 最近24小时的文章
+    )
+
+    if not rss_articles:
+        click.echo("📭 没有找到RSS文章")
         return
 
-    news_service = NewsService()
-
-    # 获取文章
-    click.echo(f"📰 正在获取最新 {count} 篇文章...")
-    articles = news_service.get_latest_articles(count=count, exclude_read=False)
-
-    if not articles:
-        click.echo("📭 没有找到文章")
-        return
+    # 转换为NewsArticle格式
+    from ..models.news import NewsArticle, NewsAuthor
+    articles = []
+    for rss_article in rss_articles[:count]:
+        news_article = NewsArticle(
+            id=rss_article.id,
+            title=rss_article.title,
+            summary=rss_article.summary or "",
+            content=rss_article.content or rss_article.summary or "",
+            url=rss_article.url,
+            published=rss_article.published,
+            updated=rss_article.published,
+            author=NewsAuthor(name=rss_article.author or "未知作者") if rss_article.author else None,
+            categories=[],
+            is_read=rss_article.is_read,
+            is_starred=False,
+            feed_title="RSS订阅"
+        )
+        articles.append(news_article)
 
     click.echo(f"✅ 获取到 {len(articles)} 篇文章，开始筛选...")
 
@@ -305,91 +306,59 @@ def filter_news(count: int, filter_type: str, show_progress: bool, show_details:
         click.echo(f"❌ 筛选失败: {e}")
 
 
-@cli.command()
-@click.option('--config-type', '-t', default='chain',
-              type=click.Choice(['keyword', 'ai', 'chain']),
-              help='配置类型')
-def filter_config(config_type: str):
-    """显示筛选配置"""
-    try:
-        config = filter_service.get_config(config_type)
-
-        click.echo(f"\n⚙️  {config_type.upper()} 筛选配置:")
-        click.echo("-" * 50)
-
-        for key, value in config.items():
-            if isinstance(value, dict):
-                click.echo(f"{key}:")
-                for sub_key, sub_value in value.items():
-                    click.echo(f"  {sub_key}: {sub_value}")
-            else:
-                click.echo(f"{key}: {value}")
-
-    except Exception as e:
-        click.echo(f"❌ 获取配置失败: {e}")
-
-
-@cli.command()
-def filter_metrics():
-    """显示筛选性能指标"""
-    try:
-        metrics = filter_service.get_metrics()
-
-        click.echo("\n📊 筛选性能指标:")
-        click.echo("-" * 50)
-
-        for filter_type, filter_metrics in metrics.items():
-            if filter_metrics.get('status') == 'no_data':
-                continue
-
-            click.echo(f"\n{filter_type.upper()} 筛选器:")
-
-            if 'avg_processing_time' in filter_metrics:
-                click.echo(f"  平均处理时间: {filter_metrics['avg_processing_time']:.2f}ms")
-                click.echo(f"  最大处理时间: {filter_metrics['max_processing_time']:.2f}ms")
-                click.echo(f"  处理文章总数: {filter_metrics['total_processed']}")
-                click.echo(f"  错误率: {filter_metrics['error_rate']:.2%}")
-
-            if 'cache_hit_rate' in filter_metrics:
-                click.echo(f"  缓存命中率: {filter_metrics['cache_hit_rate']:.2%}")
-                click.echo(f"  缓存大小: {filter_metrics.get('cache_size', 0)}")
-
-    except Exception as e:
-        click.echo(f"❌ 获取指标失败: {e}")
-
-
-@cli.command()
-def stats():
-    """显示统计信息"""
-    auth = InoreaderAuth()
-
-    if not auth.is_authenticated():
-        click.echo("❌ 未登录，请先运行 'login' 命令")
-        return
-
-    subscription_service = SubscriptionService()
-
-    click.echo("📊 正在获取统计信息...")
-
-    stats = subscription_service.get_subscription_statistics()
-
-    click.echo(f"\n📈 统计信息:")
+def _display_filter_result(result, show_details: bool = False):
+    """显示筛选结果摘要"""
+    click.echo(f"\n🎯 筛选结果摘要:")
     click.echo("-" * 50)
-    click.echo(f"📡 订阅源总数: {stats['total_subscriptions']}")
-    click.echo(f"📰 未读文章总数: {stats['total_unread']}")
+    click.echo(f"📥 输入文章数: {result.total_articles}")
+    click.echo(f"📝 关键词筛选通过: {result.keyword_filtered_count}")
+    click.echo(f"🤖 AI筛选通过: {result.ai_filtered_count}")
+    click.echo(f"✅ 最终选出: {result.final_selected_count}")
+    click.echo(f"⏱️  总处理时间: {result.total_processing_time:.2f}秒")
 
-    if stats['categories']:
-        click.echo(f"\n🏷️  分类统计:")
-        for category, data in stats['categories'].items():
-            click.echo(f"   {category}: {data['count']} 个订阅源, {data['unread']} 篇未读")
-    
-    if stats['most_active_feeds']:
-        click.echo(f"\n🔥 最活跃的订阅源 (未读数量):")
-        for item in stats['most_active_feeds'][:5]:
-            subscription = item['subscription']
-            unread_count = item['unread_count']
-            if unread_count > 0:
-                click.echo(f"   📡 {subscription.get_display_title(50)}: {unread_count} 篇未读")
+    if result.keyword_filter_time > 0:
+        click.echo(f"📝 关键词筛选时间: {result.keyword_filter_time:.2f}秒")
+    if result.ai_filter_time > 0:
+        click.echo(f"🤖 AI筛选时间: {result.ai_filter_time:.2f}秒")
+
+    if result.warnings:
+        click.echo(f"\n⚠️  警告:")
+        for warning in result.warnings:
+            click.echo(f"   {warning}")
+
+    if result.errors:
+        click.echo(f"\n❌ 错误:")
+        for error in result.errors:
+            click.echo(f"   {error}")
+
+    if show_details and result.selected_articles:
+        click.echo(f"\n📊 筛选详情:")
+        click.echo("-" * 50)
+
+        for i, combined_result in enumerate(result.selected_articles[:5], 1):
+            article = combined_result.article
+            click.echo(f"{i}. {article.get_display_title()}")
+
+            if combined_result.keyword_result:
+                kr = combined_result.keyword_result
+                click.echo(f"   📝 关键词分数: {kr.relevance_score:.3f}")
+                if kr.matched_keywords:
+                    keywords = [m.keyword for m in kr.matched_keywords[:3]]
+                    click.echo(f"   🔑 匹配关键词: {', '.join(keywords)}")
+
+            if combined_result.ai_result:
+                ar = combined_result.ai_result
+                eval_result = ar.evaluation
+                click.echo(f"   🤖 AI评分: {eval_result.total_score}/30")
+                click.echo(f"   📊 详细评分: 相关性{eval_result.relevance_score} | 创新性{eval_result.innovation_impact} | 实用性{eval_result.practicality}")
+                if ar.cached:
+                    click.echo(f"   💾 (使用缓存)")
+
+            click.echo(f"   🎯 最终分数: {combined_result.final_score:.3f}")
+            click.echo()
+
+        if len(result.selected_articles) > 5:
+            click.echo(f"   ... 还有 {len(result.selected_articles) - 5} 篇文章")
 
 
 def _display_filter_result(result, show_details: bool = False):
@@ -479,152 +448,6 @@ def _display_articles(articles):
             click.echo(f"    🔗 {article.url}")
         
         click.echo()
-
-
-@cli.command()
-@click.option('--filter-type', '-t', default='chain',
-              type=click.Choice(['keyword', 'ai', 'chain']),
-              help='筛选类型 (默认: chain)')
-@click.option('--max-subscriptions', '-s', type=int,
-              help='最大处理订阅源数量')
-@click.option('--subscription-keywords', '-k', multiple=True,
-              help='订阅源标题关键词过滤 (可多次指定)')
-@click.option('--articles-per-sub', '-a', default=50, type=int,
-              help='每个订阅源获取的文章数量 (默认: 50)')
-@click.option('--top-results', '-n', default=20, type=int,
-              help='显示的顶级结果数量 (默认: 20)')
-@click.option('--min-score', '-m', type=float,
-              help='最小分数阈值')
-@click.option('--parallel/--sequential', default=True,
-              help='是否并行处理 (默认: 并行)')
-@click.option('--export-json', type=str,
-              help='导出JSON结果到指定文件')
-@click.option('--export-csv', type=str,
-              help='导出CSV结果到指定文件')
-@click.option('--group-by-subscription', is_flag=True,
-              help='按订阅源分组显示结果')
-@click.option('--show-details', is_flag=True,
-              help='显示详细的订阅源处理结果')
-def batch_filter(filter_type: str, max_subscriptions: Optional[int],
-                subscription_keywords: tuple, articles_per_sub: int,
-                top_results: int, min_score: Optional[float],
-                parallel: bool, export_json: Optional[str],
-                export_csv: Optional[str], group_by_subscription: bool,
-                show_details: bool):
-    """批量筛选多个订阅源的文章"""
-    auth = InoreaderAuth()
-
-    if not auth.is_authenticated():
-        click.echo("❌ 未登录，请先运行 'login' 命令")
-        return
-
-    # 创建批量筛选配置
-    config = BatchFilterConfig()
-    config.filter_type = filter_type
-    config.max_subscriptions = max_subscriptions
-    config.subscription_keywords = list(subscription_keywords)
-    config.articles_per_subscription = articles_per_sub
-    config.min_score_threshold = min_score
-    config.enable_parallel = parallel
-    config.group_by_subscription = group_by_subscription
-
-    # 创建进度回调
-    callback = CLIBatchProgressCallback(show_progress=True)
-
-    try:
-        # 执行批量筛选
-        click.echo("🚀 开始批量筛选...")
-        batch_result = batch_filter_manager.filter_subscriptions_batch(config, callback)
-
-        # 显示摘要
-        summary = ResultFormatter.format_batch_summary(batch_result)
-        click.echo(summary)
-
-        # 显示订阅源结果
-        if show_details:
-            sub_results = ResultFormatter.format_subscription_results(batch_result, show_details=True)
-            click.echo(sub_results)
-
-        # 显示顶级文章
-        if batch_result.total_articles_selected > 0:
-            top_articles = ResultFormatter.format_top_articles(
-                batch_result,
-                top_n=top_results,
-                group_by_subscription=group_by_subscription
-            )
-            click.echo(top_articles)
-
-        # 显示错误和警告
-        errors_warnings = ResultFormatter.format_errors_and_warnings(batch_result)
-        if errors_warnings:
-            click.echo(errors_warnings)
-
-        # 导出结果
-        if export_json:
-            json_content = ResultFormatter.export_to_json(batch_result, include_content=True)
-            ResultExporter.save_to_file(json_content, export_json)
-            click.echo(f"✅ JSON结果已导出到: {export_json}")
-
-        if export_csv:
-            csv_content = ResultFormatter.export_to_csv(batch_result)
-            ResultExporter.save_to_file(csv_content, export_csv)
-            click.echo(f"✅ CSV结果已导出到: {export_csv}")
-
-    except Exception as e:
-        click.echo(f"❌ 批量筛选失败: {e}")
-        import traceback
-        traceback.print_exc()
-
-
-@cli.command()
-@click.option('--subscription-keywords', '-k', multiple=True,
-              help='订阅源标题关键词过滤 (可多次指定)')
-@click.option('--max-subscriptions', '-s', type=int,
-              help='最大显示订阅源数量')
-def list_subscriptions(subscription_keywords: tuple, max_subscriptions: Optional[int]):
-    """列出订阅源（支持关键词过滤）"""
-    auth = InoreaderAuth()
-
-    if not auth.is_authenticated():
-        click.echo("❌ 未登录，请先运行 'login' 命令")
-        return
-
-    subscription_service = SubscriptionService()
-
-    try:
-        # 获取所有订阅源
-        subscriptions = subscription_service.get_all_subscriptions()
-
-        # 应用关键词过滤
-        if subscription_keywords:
-            filtered_subscriptions = []
-            for subscription in subscriptions:
-                title_lower = subscription.title.lower()
-                if any(keyword.lower() in title_lower for keyword in subscription_keywords):
-                    filtered_subscriptions.append(subscription)
-            subscriptions = filtered_subscriptions
-
-        # 限制数量
-        if max_subscriptions:
-            subscriptions = subscriptions[:max_subscriptions]
-
-        if not subscriptions:
-            click.echo("📭 没有找到匹配的订阅源")
-            return
-
-        click.echo(f"📰 找到 {len(subscriptions)} 个订阅源:")
-        click.echo("=" * 80)
-
-        for i, subscription in enumerate(subscriptions, 1):
-            click.echo(f"{i:3d}. {subscription.title}")
-            if subscription.categories:
-                categories = ", ".join([cat.label for cat in subscription.categories])
-                click.echo(f"     分类: {categories}")
-            click.echo(f"     URL: {subscription.html_url}")
-            click.echo()
-
-    except Exception as e:
-        click.echo(f"❌ 获取订阅源失败: {e}")
 
 
 if __name__ == '__main__':

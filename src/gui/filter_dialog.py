@@ -77,14 +77,15 @@ class FilterDialog:
         ttk.Radiobutton(mode_frame, text="单个订阅源筛选", variable=self.filter_mode_var,
                        value="single").pack(anchor=tk.W, pady=(10, 0))
 
-        # 显示当前选中的订阅源
-        if self.main_window and hasattr(self.main_window, 'selected_subscription') and self.main_window.selected_subscription:
-            selected_title = self.main_window.selected_subscription.title
+        # 显示当前选中的RSS订阅源
+        if (self.main_window and hasattr(self.main_window, 'rss_manager') and
+            self.main_window.rss_manager and self.main_window.rss_manager.selected_feed):
+            selected_title = self.main_window.rss_manager.selected_feed.title
             if len(selected_title) > 40:
                 selected_title = selected_title[:37] + "..."
             info_text = f"当前选中: {selected_title}"
         else:
-            info_text = "当前未选中任何订阅源"
+            info_text = "当前未选中任何RSS订阅源"
 
         info_label = ttk.Label(mode_frame, text=info_text, foreground="gray", font=("", 9))
         info_label.pack(anchor=tk.W, pady=(5, 0))
@@ -137,12 +138,19 @@ class FilterDialog:
             "filter_type": filter_type
         }
 
-        # 如果是单个订阅源筛选模式，需要检查是否有选中的订阅源
+        # 如果是单个订阅源筛选模式，需要检查是否有选中的RSS订阅源
         if mode == "single":
-            if self.main_window and hasattr(self.main_window, 'selected_subscription') and self.main_window.selected_subscription:
-                self.result["subscription"] = self.main_window.selected_subscription
+            if (self.main_window and hasattr(self.main_window, 'rss_manager') and
+                self.main_window.rss_manager and self.main_window.rss_manager.selected_feed):
+                # 创建一个模拟的subscription对象，用于兼容现有接口
+                rss_feed = self.main_window.rss_manager.selected_feed
+                subscription = type('Subscription', (), {
+                    'id': f"rss_{rss_feed.id}",
+                    'title': rss_feed.title
+                })()
+                self.result["subscription"] = subscription
             else:
-                messagebox.showwarning("警告", "请先选择要筛选的订阅源")
+                messagebox.showwarning("警告", "请先在RSS管理器中选择要筛选的订阅源")
                 return
 
         print(f"筛选配置: {self.result}")  # 调试信息

@@ -10,50 +10,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-@dataclass
-class InoreaderConfig:
-    """Inoreader API配置"""
-    app_id: str
-    app_key: str
-    base_url: str = "https://www.inoreader.com/reader/api/0/"
-    oauth_url: str = "https://www.inoreader.com/oauth2/"
-
-    # API区域配置
-    regions: list = None
-    current_region: int = 0
-
-    def __post_init__(self):
-        if self.regions is None:
-            self.regions = [
-                {
-                    "name": "区域1",
-                    "base_url": "https://www.inoreader.com/reader/api/0/",
-                    "oauth_url": "https://www.inoreader.com/oauth2/",
-                    "description": "主要API区域"
-                },
-                {
-                    "name": "区域2",
-                    "base_url": "https://jp.inoreader.com/reader/api/0/",
-                    "oauth_url": "https://jp.inoreader.com/oauth2/",
-                    "description": "日本API区域"
-                }
-            ]
-
-    def get_current_region(self) -> dict:
-        """获取当前使用的API区域"""
-        return self.regions[self.current_region]
-
-    def switch_to_next_region(self) -> bool:
-        """切换到下一个API区域"""
-        if self.current_region < len(self.regions) - 1:
-            self.current_region += 1
-            return True
-        return False
-
-    def reset_region(self):
-        """重置到第一个区域"""
-        self.current_region = 0
-
 
 @dataclass
 class AppConfig:
@@ -84,11 +40,6 @@ class Settings:
     """配置管理器"""
     
     def __init__(self):
-        self.inoreader = InoreaderConfig(
-            app_id=os.getenv("INOREADER_APP_ID", "1000001602"),
-            app_key=os.getenv("INOREADER_APP_KEY", "sQfe0f9MWiw9O4Xxkq3YwXNhsy9NrAT_")
-        )
-        
         self.app = AppConfig(
             debug=os.getenv("DEBUG", "false").lower() == "true",
             log_level=os.getenv("LOG_LEVEL", "INFO"),

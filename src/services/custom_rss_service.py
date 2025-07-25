@@ -4,6 +4,7 @@
 import logging
 from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -252,27 +253,30 @@ class CustomRSSService:
     def refresh_all_feeds(self, max_workers: int = 5) -> Dict[str, Tuple[bool, str, int]]:
         """
         刷新所有激活的订阅源
-        
+
         Args:
             max_workers: 最大并发数
-            
+
         Returns:
             {feed_id: (是否成功, 消息, 新文章数量)}
         """
+        # 先执行自动清理
+        self.auto_cleanup_old_articles()
+
         active_feeds = self.get_active_subscriptions()
         results = {}
-        
+
         if not active_feeds:
             return results
-        
+
         # 使用线程池并发刷新
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # 提交任务
             future_to_feed = {
-                executor.submit(self.refresh_feed, feed.id): feed.id 
+                executor.submit(self.refresh_feed, feed.id): feed.id
                 for feed in active_feeds
             }
-            
+
             # 收集结果
             for future in as_completed(future_to_feed):
                 feed_id = future_to_feed[future]
@@ -281,7 +285,7 @@ class CustomRSSService:
                 except Exception as e:
                     logger.error(f"刷新订阅源 {feed_id} 时出错: {e}")
                     results[feed_id] = (False, f"刷新出错: {e}", 0)
-        
+
         return results
     
     def get_all_articles(self, category: Optional[str] = None, 
@@ -342,6 +346,97 @@ class CustomRSSService:
             return False
         except Exception as e:
             logger.error(f"标记文章已读失败: {e}")
+            return False
+
+    def cleanup_old_unread_articles(self, days: int = 7) -> Tuple[int, int]:
+        """
+        清理指定天数之前的未读文章
+
+        Args:
+            days: 保留天数，默认7天
+
+        Returns:
+            (清理的文章数量, 处理的订阅源数量)
+        """
+        try:
+            cutoff_time = datetime.now(timezone.utc) - timedelta(days=days)
+            total_removed = 0
+            feeds_processed = 0
+
+            with self._lock:
+                for feed in self.subscription_manager.feeds:
+                    if not feed.is_active:
+                        continue
+
+                    original_count = len(feed.articles)
+
+                    # 保留已读文章和一周内的未读文章
+                    feed.articles = [
+                        article for article in feed.articles
+                        if article.is_read or article.published > cutoff_time
+                    ]
+
+                    removed_count = original_count - len(feed.articles)
+                    if removed_count > 0:
+                        total_removed += removed_count
+                        feeds_processed += 1
+                        logger.info(f"从 {feed.title} 清理了 {removed_count} 篇旧的未读文章")
+
+                # 保存更改
+                if total_removed > 0:
+                    self.subscription_manager.save()
+                    logger.info(f"总共清理了 {total_removed} 篇旧的未读文章，涉及 {feeds_processed} 个订阅源")
+
+            return total_removed, feeds_processed
+
+        except Exception as e:
+            logger.error(f"清理旧未读文章失败: {e}")
+            return 0, 0
+
+    def auto_cleanup_old_articles(self) -> bool:
+        """
+        自动清理旧文章（在刷新时调用）
+
+        Returns:
+            是否执行了清理
+        """
+        try:
+            # 检查是否需要清理（每天最多清理一次）
+            last_cleanup_file = Path.home() / ".news_selector" / "last_cleanup.txt"
+            last_cleanup_file.parent.mkdir(parents=True, exist_ok=True)
+
+            now = datetime.now(timezone.utc)
+            should_cleanup = True
+
+            if last_cleanup_file.exists():
+                try:
+                    with open(last_cleanup_file, 'r') as f:
+                        last_cleanup_str = f.read().strip()
+                        last_cleanup = datetime.fromisoformat(last_cleanup_str)
+
+                        # 如果距离上次清理不到24小时，跳过
+                        if (now - last_cleanup).total_seconds() < 24 * 3600:
+                            should_cleanup = False
+                except Exception:
+                    # 如果读取失败，执行清理
+                    pass
+
+            if should_cleanup:
+                removed_count, feeds_count = self.cleanup_old_unread_articles()
+
+                # 记录清理时间
+                with open(last_cleanup_file, 'w') as f:
+                    f.write(now.isoformat())
+
+                if removed_count > 0:
+                    logger.info(f"自动清理完成：删除了 {removed_count} 篇旧的未读文章")
+
+                return True
+
+            return False
+
+        except Exception as e:
+            logger.error(f"自动清理失败: {e}")
             return False
     
     def toggle_article_star(self, article_id: str, feed_id: str) -> bool:
