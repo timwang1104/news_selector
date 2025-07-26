@@ -53,6 +53,30 @@ class AIFilterConfig:
 
 
 @dataclass
+class TagBalanceConfig:
+    """标签平衡配置"""
+    # 标签生成配置
+    enable_tag_generation: bool = True
+    min_tag_score: float = 0.2
+    max_tags_per_article: int = 5
+    primary_tag_threshold: float = 0.5
+
+    # 标签数量限制
+    enable_tag_limits: bool = True
+    tag_limits: Dict[str, int] = None  # {tag_name: max_count}
+    default_tag_limit: int = 5  # 默认标签限制
+
+    # 平衡策略配置
+    enable_balanced_selection: bool = True
+    balance_threshold: float = 0.5  # 填充比例阈值
+    underrepresented_boost: float = 1.5  # 代表性不足标签的权重提升
+
+    def __post_init__(self):
+        if self.tag_limits is None:
+            self.tag_limits = {}
+
+
+@dataclass
 class FilterChainConfig:
     """筛选链配置"""
     # 筛选流程配置
@@ -60,7 +84,7 @@ class FilterChainConfig:
     enable_ai_filter: bool = True
     keyword_threshold: float = 0.6
     final_score_threshold: float = 0.7
-    
+
     # 流程控制
     max_keyword_results: int = 100
     max_ai_requests: int = 50
@@ -68,11 +92,18 @@ class FilterChainConfig:
     fail_fast: bool = False
     enable_parallel: bool = True
     batch_size: int = 10
-    
+
     # 结果配置
     sort_by: str = "final_score"    # final_score, relevance, timestamp
     include_rejected: bool = False
     include_metrics: bool = True
+
+    # 标签平衡配置
+    tag_balance: TagBalanceConfig = None
+
+    def __post_init__(self):
+        if self.tag_balance is None:
+            self.tag_balance = TagBalanceConfig()
 
 
 # 注意：INTERNATIONAL_TECH_KEYWORDS 已移动到 default_keywords.py
@@ -109,6 +140,11 @@ class FilterConfigManager:
                 # 更新筛选链配置
                 if "chain" in saved_configs:
                     chain_data = saved_configs["chain"]
+
+                    # 处理嵌套的tag_balance配置
+                    if "tag_balance" in chain_data and isinstance(chain_data["tag_balance"], dict):
+                        chain_data["tag_balance"] = TagBalanceConfig(**chain_data["tag_balance"])
+
                     self.configs["chain"] = FilterChainConfig(**chain_data)
 
                 # 更新关键词配置
@@ -147,13 +183,35 @@ class FilterConfigManager:
             max_requests=50
         )
 
+        # 创建默认标签限制配置
+        default_tag_limits = {
+            "artificial_intelligence": 8,
+            "quantum_technology": 5,
+            "biotechnology": 5,
+            "semiconductor": 4,
+            "5g_6g_networks": 3,
+            "cybersecurity": 3,
+            "tech_policy": 6,
+            "industry_development": 4,
+            "international_cooperation": 3,
+            "key_institutions": 2
+        }
+
+        tag_balance_config = TagBalanceConfig(
+            enable_tag_generation=True,
+            enable_tag_limits=True,
+            tag_limits=default_tag_limits,
+            enable_balanced_selection=True
+        )
+
         # 筛选链配置
         chain_config = FilterChainConfig(
             keyword_threshold=0.65,
             final_score_threshold=0.7,
             max_keyword_results=100,
             max_ai_requests=50,
-            max_final_results=30
+            max_final_results=30,
+            tag_balance=tag_balance_config
         )
 
         self.configs = {

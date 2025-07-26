@@ -180,12 +180,20 @@ class RelevanceScorer:
 
 class KeywordFilter(BaseFilter):
     """关键词筛选器"""
-    
-    def __init__(self, config: KeywordConfig):
+
+    def __init__(self, config: KeywordConfig, enable_tag_generation: bool = True):
         self.config = config
         self.matcher = KeywordMatcher(config)
         self.scorer = RelevanceScorer(config)
         self.metrics = FilterMetrics()
+
+        # 标签生成器
+        self.enable_tag_generation = enable_tag_generation
+        if enable_tag_generation:
+            from .tag_generator import TagGenerator
+            self.tag_generator = TagGenerator()
+        else:
+            self.tag_generator = None
     
     def filter(self, articles: List[NewsArticle]) -> List[KeywordFilterResult]:
         """筛选文章列表"""
@@ -228,14 +236,21 @@ class KeywordFilter(BaseFilter):
             
             processing_time = time.time() - start_time
             self.metrics.record_processing_time(processing_time * 1000)
-            
-            return KeywordFilterResult(
+
+            # 创建筛选结果
+            result = KeywordFilterResult(
                 article=article,
                 matched_keywords=matches,
                 relevance_score=relevance_score,
                 category_scores=category_scores,
                 processing_time=processing_time
             )
+
+            # 生成标签
+            if self.tag_generator:
+                result.tags = self.tag_generator.generate_tags_from_keyword_result(result)
+
+            return result
             
         except Exception as e:
             self.metrics.record_error()

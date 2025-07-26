@@ -97,6 +97,7 @@ class BatchFilterResultDialog:
         
         ttk.Button(button_frame, text="导出JSON", command=self.export_json).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(button_frame, text="导出CSV", command=self.export_csv).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="📊 表格导出", command=self.show_table_export_dialog).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(button_frame, text="关闭", command=self.close).pack(side=tk.RIGHT)
     
     def create_toolbar(self, parent):
@@ -431,21 +432,153 @@ class BatchFilterResultDialog:
                 messagebox.showerror("错误", f"导出JSON失败: {e}")
     
     def export_csv(self):
-        """导出CSV"""
+        """导出CSV（使用新的MCP表格导出功能）"""
         filename = filedialog.asksaveasfilename(
             title="导出CSV",
             defaultextension=".csv",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
         )
-        
+
         if filename:
             try:
-                csv_content = ResultFormatter.export_to_csv(self.result)
-                ResultExporter.save_to_file(csv_content, filename, encoding="utf-8-sig")  # 使用BOM以支持Excel
-                messagebox.showinfo("成功", f"CSV文件已导出到: {filename}")
+                # 使用新的MCP表格导出功能
+                from ..services.filter_service import filter_service
+
+                # 将BatchFilterResult转换为FilterChainResult格式
+                filter_chain_result = self._convert_to_filter_chain_result()
+
+                if not filter_chain_result or not filter_chain_result.selected_articles:
+                    messagebox.showwarning("警告", "没有可导出的筛选结果")
+                    return
+
+                # 执行MCP表格导出
+                export_result = filter_service.export_results_to_table(
+                    result=filter_chain_result,
+                    output_format="csv",
+                    output_path=filename,
+                    enable_translation=False  # 默认禁用翻译以提高速度
+                )
+
+                if export_result.get("success", False):
+                    exported_count = export_result.get("exported_count", 0)
+                    messagebox.showinfo("成功", f"CSV文件已导出到: {filename}\n导出数量: {exported_count} 篇文章\n\n包含字段: 中文标题、英文标题、中文摘要、发布单位、发布时间、原文全文、报告类型、链接等")
+                else:
+                    error_msg = export_result.get("message", "未知错误")
+                    messagebox.showerror("错误", f"导出CSV失败: {error_msg}")
+
             except Exception as e:
                 messagebox.showerror("错误", f"导出CSV失败: {e}")
-    
+                import traceback
+                traceback.print_exc()
+
+    def show_table_export_dialog(self):
+        """显示表格导出对话框"""
+        try:
+            # 转换为FilterChainResult格式
+            filter_chain_result = self._convert_to_filter_chain_result()
+
+            if not filter_chain_result or not filter_chain_result.selected_articles:
+                messagebox.showwarning("警告", "没有可导出的筛选结果")
+                return
+
+            # 显示表格导出对话框
+            from .dialogs.table_export_dialog import TableExportDialog
+            dialog = TableExportDialog(self.dialog, filter_chain_result)
+            dialog.show()
+
+        except ImportError:
+            messagebox.showerror("错误", "表格导出功能未安装")
+        except Exception as e:
+            messagebox.showerror("错误", f"打开表格导出对话框失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+    def _convert_to_filter_chain_result(self):
+        """将BatchFilterResult转换为FilterChainResult格式"""
+        try:
+            from ..filters.base import FilterChainResult, CombinedFilterResult, ArticleTag
+            from datetime import datetime
+
+            # 收集所有选中的文章
+            selected_articles = []
+
+            for subscription_result in self.result.subscription_results:
+                for article_result in subscription_result.selected_articles:
+                    # 创建标签
+                    tags = []
+                    if hasattr(article_result, 'tags') and article_result.tags:
+                        tags = article_result.tags
+                    else:
+                        # 如果没有标签，创建一个基于分数的标签
+                        if hasattr(article_result, 'final_score') and article_result.final_score > 0:
+                            tags = [ArticleTag("selected", article_result.final_score, article_result.final_score, "filter")]
+
+                    # 创建CombinedFilterResult
+                    combined_result = CombinedFilterResult(
+                        article=article_result.article,
+                        keyword_result=getattr(article_result, 'keyword_result', None),
+                        ai_result=getattr(article_result, 'ai_result', None),
+                        final_score=getattr(article_result, 'final_score', 1.0),
+                        selected=True,
+                        rejection_reason=None,
+                        tags=tags
+                    )
+
+                    selected_articles.append(combined_result)
+
+            # 创建FilterChainResult
+            filter_chain_result = FilterChainResult(
+                total_articles=len(selected_articles),
+                keyword_filtered_count=len(selected_articles),
+                ai_filtered_count=len(selected_articles),
+                final_selected_count=len(selected_articles),
+                selected_articles=selected_articles,
+                processing_time=0.0,
+                start_time=datetime.now(),
+                end_time=datetime.now()
+            )
+
+            return filter_chain_result
+
+        except Exception as e:
+            print(f"❌ 转换BatchFilterResult失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def _convert_result_to_dict(self, result):
+        """将CombinedFilterResult转换为字典格式（用于测试）"""
+        try:
+            article = result.article
+
+            # 提取AI评估理由
+            ai_reasoning = ""
+            if result.ai_result and hasattr(result.ai_result, 'evaluation') and hasattr(result.ai_result.evaluation, 'reasoning'):
+                ai_reasoning = result.ai_result.evaluation.reasoning
+
+            return {
+                "title": article.title,
+                "summary": article.summary,
+                "content": article.content,
+                "url": article.url,
+                "published": article.published.isoformat() if article.published else "",
+                "feed_title": article.feed_title,
+                "final_score": result.final_score,
+                "ai_reasoning": ai_reasoning,
+                "tags": [
+                    {
+                        "name": tag.name,
+                        "score": tag.score,
+                        "confidence": tag.confidence,
+                        "source": tag.source
+                    }
+                    for tag in (result.tags or [])
+                ]
+            }
+        except Exception as e:
+            print(f"❌ 转换结果到字典失败: {e}")
+            return {}
+
     def close(self):
         """关闭对话框"""
         if self.dialog:

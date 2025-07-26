@@ -19,6 +19,20 @@ class KeywordMatch:
 
 
 @dataclass
+class ArticleTag:
+    """文章标签"""
+    name: str          # 标签名称（对应category）
+    score: float       # 标签评分
+    confidence: float  # 置信度
+    source: str        # 标签来源（keyword/ai）
+
+    def __post_init__(self):
+        # 确保评分和置信度在合理范围内
+        self.score = max(0.0, min(1.0, self.score))
+        self.confidence = max(0.0, min(1.0, self.confidence))
+
+
+@dataclass
 class KeywordFilterResult:
     """关键词筛选结果"""
     article: NewsArticle
@@ -26,6 +40,11 @@ class KeywordFilterResult:
     relevance_score: float
     category_scores: Dict[str, float]
     processing_time: float
+    tags: List[ArticleTag] = None  # 新增：文章标签
+
+    def __post_init__(self):
+        if self.tags is None:
+            self.tags = []
 
 
 @dataclass
@@ -81,6 +100,45 @@ class CombinedFilterResult:
     final_score: float
     selected: bool
     rejection_reason: Optional[str]
+    tags: List[ArticleTag] = None  # 新增：综合标签信息
+
+    def __post_init__(self):
+        if self.tags is None:
+            self.tags = []
+
+    @property
+    def primary_tag(self) -> Optional[ArticleTag]:
+        """获取主要标签（评分最高的标签）"""
+        if not self.tags:
+            return None
+        return max(self.tags, key=lambda t: t.score)
+
+    def get_tags_by_threshold(self, threshold: float = 0.3) -> List[ArticleTag]:
+        """获取评分超过阈值的标签"""
+        return [tag for tag in self.tags if tag.score >= threshold]
+
+
+@dataclass
+class TagStatistics:
+    """标签统计信息"""
+    tag_distribution: Dict[str, int] = None      # 标签分布 {tag_name: count}
+    tag_fill_ratios: Dict[str, float] = None     # 标签填充比例 {tag_name: ratio}
+    underrepresented_tags: List[str] = None      # 代表性不足的标签
+    overrepresented_tags: List[str] = None       # 过度代表的标签
+    total_tagged_articles: int = 0               # 有标签的文章总数
+    untagged_articles: int = 0                   # 无标签的文章数
+    average_tags_per_article: float = 0.0        # 每篇文章平均标签数
+    tag_diversity_score: float = 0.0             # 标签多样性评分
+
+    def __post_init__(self):
+        if self.tag_distribution is None:
+            self.tag_distribution = {}
+        if self.tag_fill_ratios is None:
+            self.tag_fill_ratios = {}
+        if self.underrepresented_tags is None:
+            self.underrepresented_tags = []
+        if self.overrepresented_tags is None:
+            self.overrepresented_tags = []
 
 
 @dataclass
@@ -105,6 +163,9 @@ class FilterChainResult:
     ai_filter_time: float = 0.0
     total_processing_time: float = 0.0
 
+    # 标签统计
+    tag_statistics: TagStatistics = None
+
     # 错误信息
     errors: List[str] = None
     warnings: List[str] = None
@@ -118,6 +179,8 @@ class FilterChainResult:
             self.errors = []
         if self.warnings is None:
             self.warnings = []
+        if self.tag_statistics is None:
+            self.tag_statistics = TagStatistics()
 
 
 @dataclass

@@ -108,6 +108,15 @@ class MainWindow:
         filter_menu.add_command(label="筛选配置", command=self.show_filter_config)
         filter_menu.add_command(label="性能指标", command=self.show_filter_metrics)
 
+        # 导出菜单
+        export_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="导出", menu=export_menu)
+        export_menu.add_command(label="导出表格", command=self.show_table_export_dialog)
+        export_menu.add_command(label="快速导出到Excel", command=self.quick_export_excel)
+        export_menu.add_command(label="快速导出到CSV", command=self.quick_export_csv)
+        export_menu.add_separator()
+        export_menu.add_command(label="批量导出", command=self.show_batch_export_dialog)
+
         # 工具菜单
         tools_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="工具", menu=tools_menu)
@@ -2227,6 +2236,274 @@ AI筛选通过: {result.ai_filtered_count}
         response_text.config(state="normal")
         response_text.insert("1.0", analysis_record.raw_response or "无原始响应数据")
         response_text.config(state="disabled")
+
+    def show_table_export_dialog(self):
+        """显示表格导出对话框"""
+        try:
+            from .dialogs.table_export_dialog import TableExportDialog
+
+            # 调试信息
+            print(f"🔍 检查筛选结果状态:")
+            print(f"   filter_result 存在: {self.filter_result is not None}")
+            if self.filter_result:
+                print(f"   selected_articles 存在: {hasattr(self.filter_result, 'selected_articles')}")
+                if hasattr(self.filter_result, 'selected_articles'):
+                    print(f"   selected_articles 数量: {len(self.filter_result.selected_articles) if self.filter_result.selected_articles else 0}")
+            print(f"   filtered_articles 数量: {len(self.filtered_articles)}")
+            print(f"   display_mode: {self.display_mode}")
+
+            # 检查多种可能的筛选结果来源
+            filter_result_to_use = None
+
+            # 1. 检查主要的筛选结果
+            if self.filter_result and hasattr(self.filter_result, 'selected_articles') and self.filter_result.selected_articles:
+                filter_result_to_use = self.filter_result
+                print(f"✅ 使用主要筛选结果: {len(self.filter_result.selected_articles)} 篇文章")
+
+            # 2. 如果没有主要筛选结果，但有筛选后的文章列表，创建一个临时的筛选结果
+            elif self.filtered_articles:
+                print(f"🔄 从筛选文章列表创建临时筛选结果: {len(self.filtered_articles)} 篇文章")
+                filter_result_to_use = self._create_temp_filter_result_from_articles(self.filtered_articles)
+
+            # 3. 如果都没有，显示提示
+            if not filter_result_to_use:
+                msg = "没有可导出的筛选结果。\n\n请先执行智能筛选：\n"
+                msg += "1. 点击工具栏的'筛选'按钮\n"
+                msg += "2. 或使用菜单'筛选' → '智能筛选'\n"
+                msg += "3. 或使用菜单'筛选' → '批量筛选'\n\n"
+                msg += f"调试信息:\n"
+                msg += f"- filter_result: {self.filter_result is not None}\n"
+                msg += f"- filtered_articles: {len(self.filtered_articles)} 篇\n"
+                msg += f"- display_mode: {self.display_mode}"
+                messagebox.showwarning("提示", msg)
+                return
+
+            # 显示导出对话框，传递筛选结果
+            dialog = TableExportDialog(self.root, filter_result_to_use)
+            dialog.show()
+
+        except ImportError:
+            messagebox.showerror("错误", "表格导出功能未安装")
+        except Exception as e:
+            messagebox.showerror("错误", f"打开导出对话框失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+    def _create_temp_filter_result_from_articles(self, articles):
+        """从文章列表创建临时的筛选结果"""
+        try:
+            from ..filters.base import FilterChainResult, CombinedFilterResult, ArticleTag
+            from datetime import datetime
+
+            # 为每篇文章创建CombinedFilterResult
+            combined_results = []
+            for article in articles:
+                # 创建基本标签
+                tags = [ArticleTag("filtered", 1.0, 1.0, "manual")]
+
+                # 创建组合筛选结果
+                combined_result = CombinedFilterResult(
+                    article=article,
+                    keyword_result=None,
+                    ai_result=None,
+                    final_score=1.0,
+                    selected=True,
+                    rejection_reason=None,
+                    tags=tags
+                )
+                combined_results.append(combined_result)
+
+            # 创建FilterChainResult
+            now = datetime.now()
+            filter_result = FilterChainResult(
+                total_articles=len(articles),
+                processing_start_time=now,
+                processing_end_time=now,
+                keyword_filtered_count=len(articles),
+                ai_filtered_count=len(articles),
+                final_selected_count=len(articles),
+                selected_articles=combined_results,
+                total_processing_time=0.0
+            )
+
+            return filter_result
+
+        except Exception as e:
+            print(f"❌ 创建临时筛选结果失败: {e}")
+            return None
+
+    def quick_export_excel(self):
+        """快速导出到Excel"""
+        self._quick_export("xlsx")
+
+    def quick_export_csv(self):
+        """快速导出到CSV"""
+        self._quick_export("csv")
+
+    def _quick_export(self, format_type: str):
+        """快速导出的通用方法"""
+        try:
+            # 获取当前显示的文章
+            articles = self.get_current_articles()
+            if not articles:
+                msg = "没有可导出的文章。\n\n请先执行以下操作之一：\n"
+                msg += "1. 使用RSS管理功能加载文章\n"
+                msg += "2. 执行智能筛选获取筛选结果\n"
+                msg += "3. 从订阅源加载新闻文章"
+                messagebox.showwarning("提示", msg)
+                return
+
+            # 选择保存路径
+            from tkinter import filedialog
+            from datetime import datetime
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            if format_type == "xlsx":
+                filename = f"news_export_{timestamp}.xlsx"
+                filetypes = [("Excel文件", "*.xlsx"), ("所有文件", "*.*")]
+            else:
+                filename = f"news_export_{timestamp}.csv"
+                filetypes = [("CSV文件", "*.csv"), ("所有文件", "*.*")]
+
+            filepath = filedialog.asksaveasfilename(
+                defaultextension=f".{format_type}",
+                filetypes=filetypes,
+                initialvalue=filename
+            )
+
+            if not filepath:
+                return
+
+            # 执行导出
+            self.update_status("正在导出...")
+            self.root.update_idletasks()
+
+            # 使用新的MCP表格导出功能
+            # filter_service 已经在文件顶部导入了
+
+            # 使用现有的筛选结果，如果没有则执行筛选
+            if hasattr(self, 'filter_result') and self.filter_result:
+                filter_result = self.filter_result
+                print(f"📋 使用现有筛选结果: {len(filter_result.selected_articles)} 篇文章")
+            else:
+                self.update_status("正在筛选文章...")
+                filter_result = filter_service.filter_articles(
+                    articles=articles,
+                    filter_type="keyword"  # 使用关键词筛选避免AI调用
+                )
+                self.filter_result = filter_result
+                print(f"📋 新筛选结果: {len(filter_result.selected_articles)} 篇文章")
+
+            # 执行表格导出
+            self.update_status("正在生成表格...")
+            export_result = filter_service.export_results_to_table(
+                result=filter_result,
+                output_format=format_type,
+                output_path=filepath,
+                enable_translation=False  # 默认禁用翻译以提高速度
+            )
+
+            if export_result.get("success", False):
+                exported_count = export_result.get("exported_count", 0)
+                messagebox.showinfo("成功", f"导出完成！\n文件: {filepath}\n导出数量: {exported_count} 篇文章")
+                self.update_status("导出完成")
+            else:
+                error_msg = export_result.get("message", "未知错误")
+                messagebox.showerror("错误", f"导出失败: {error_msg}")
+                self.update_status("导出失败")
+
+        except Exception as e:
+            messagebox.showerror("错误", f"导出失败: {str(e)}")
+            self.update_status("导出失败")
+
+    def show_batch_export_dialog(self):
+        """显示批量导出对话框"""
+        try:
+            from .dialogs.batch_export_dialog import BatchExportDialog
+
+            # 调试信息
+            print(f"🔍 检查批量导出数据状态:")
+            print(f"   filter_result 存在: {self.filter_result is not None}")
+            print(f"   filtered_articles 数量: {len(self.filtered_articles)}")
+
+            # 优先使用筛选结果
+            data_to_export = None
+
+            if self.filter_result and hasattr(self.filter_result, 'selected_articles') and self.filter_result.selected_articles:
+                data_to_export = self.filter_result
+                print(f"✅ 使用筛选结果: {len(self.filter_result.selected_articles)} 篇文章")
+            elif self.filtered_articles:
+                # 从筛选文章创建临时结果
+                data_to_export = self._create_temp_filter_result_from_articles(self.filtered_articles)
+                print(f"🔄 使用筛选文章列表: {len(self.filtered_articles)} 篇文章")
+            else:
+                # 获取当前显示的文章
+                articles = self.get_current_articles()
+                if articles:
+                    data_to_export = self._create_temp_filter_result_from_articles(articles)
+                    print(f"🔄 使用当前文章: {len(articles)} 篇文章")
+
+            if not data_to_export:
+                msg = "没有可导出的文章。\n\n请先执行以下操作之一：\n"
+                msg += "1. 使用RSS管理功能加载文章\n"
+                msg += "2. 执行智能筛选获取筛选结果\n"
+                msg += "3. 从订阅源加载新闻文章\n\n"
+                msg += f"调试信息:\n"
+                msg += f"- filter_result: {self.filter_result is not None}\n"
+                msg += f"- filtered_articles: {len(self.filtered_articles)} 篇\n"
+                msg += f"- current_articles: {len(self.current_articles)} 篇"
+                messagebox.showwarning("提示", msg)
+                return
+
+            # 显示批量导出对话框
+            dialog = BatchExportDialog(self.root, data_to_export)
+            dialog.show()
+
+        except ImportError:
+            messagebox.showerror("错误", "批量导出功能未安装")
+        except Exception as e:
+            messagebox.showerror("错误", f"打开批量导出对话框失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+    def get_current_articles(self):
+        """获取当前显示的文章列表"""
+        # 根据当前显示模式返回相应的文章列表
+        if self.display_mode == "filtered" and self.filtered_articles:
+            print(f"📋 获取当前文章: 筛选结果 ({len(self.filtered_articles)} 篇)")
+            return self.filtered_articles
+        elif self.current_articles:
+            print(f"📋 获取当前文章: 所有文章 ({len(self.current_articles)} 篇)")
+            return self.current_articles
+        else:
+            # 如果内存中没有文章，尝试从文章树中获取
+            articles = self._get_articles_from_tree()
+            if articles:
+                print(f"📋 获取当前文章: 从文章树获取 ({len(articles)} 篇)")
+                return articles
+            else:
+                print(f"📋 获取当前文章: 无文章")
+                return []
+
+    def _get_articles_from_tree(self):
+        """从文章树中获取文章对象"""
+        articles = []
+
+        # 检查是否有文章树项目
+        tree_items = self.article_tree.get_children()
+        if not tree_items:
+            return articles
+
+        # 根据当前显示模式获取文章
+        if self.display_mode == "filtered" and self.filtered_articles:
+            # 如果是筛选模式，直接返回筛选结果
+            return self.filtered_articles
+        elif self.current_articles:
+            # 如果有当前文章列表，返回对应的文章
+            for i in range(min(len(tree_items), len(self.current_articles))):
+                articles.append(self.current_articles[i])
+
+        return articles
 
     def run(self):
         """运行主循环"""

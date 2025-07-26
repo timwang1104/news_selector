@@ -5,7 +5,7 @@ import json
 import time
 import logging
 import requests
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from ..models.news import NewsArticle
 from ..config.filter_config import AIFilterConfig
 from ..filters.base import AIEvaluation
@@ -82,7 +82,7 @@ class AIClient:
             logger.warning(f"使用降级评估策略: {article_title}")
             return self._fallback_evaluation(article)
 
-    def evaluate_article_with_raw_response(self, article: NewsArticle) -> tuple[AIEvaluation, str]:
+    def evaluate_article_with_raw_response(self, article: NewsArticle) -> Tuple[AIEvaluation, str]:
         """评估单篇文章并返回原始响应"""
         article_title = article.title[:50] + "..." if len(article.title) > 50 else article.title
         logger.debug(f"开始评估文章（含原始响应）: {article_title}")

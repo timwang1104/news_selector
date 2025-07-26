@@ -9,6 +9,7 @@ from ..filters.keyword_filter import KeywordFilter
 from ..filters.ai_filter import AIFilter
 from ..filters.filter_chain import FilterChain, FilterProgressCallback
 from ..filters.base import FilterChainResult, CombinedFilterResult
+from .table_export_service import get_table_export_service
 
 logger = logging.getLogger(__name__)
 
@@ -356,6 +357,106 @@ class FilterService:
         """清理过期缓存"""
         if self._ai_filter:
             self._ai_filter.cleanup_cache()
+
+    def export_results_to_table(self,
+                               result: FilterChainResult,
+                               output_format: str = "console",
+                               output_path: Optional[str] = None,
+                               enable_translation: bool = True,
+                               **export_options) -> Dict[str, Any]:
+        """
+        将筛选结果导出为表格
+
+        Args:
+            result: 筛选结果
+            output_format: 输出格式 (console, csv, excel, html, json等)
+            output_path: 输出文件路径
+            enable_translation: 是否启用翻译功能
+            **export_options: 导出选项
+
+        Returns:
+            导出结果信息
+        """
+        if not result.selected_articles:
+            return {
+                "success": False,
+                "message": "没有选中的文章可导出",
+                "exported_count": 0
+            }
+
+        try:
+            # 获取表格导出服务
+            export_service = get_table_export_service(enable_translation=enable_translation)
+
+            # 导出文章
+            export_result = export_service.export_articles_sync(
+                results=result.selected_articles,
+                output_format=output_format,
+                output_path=output_path,
+                **export_options
+            )
+
+            return export_result
+
+        except Exception as e:
+            logger.error(f"表格导出失败: {e}")
+            return {
+                "success": False,
+                "message": f"导出失败: {str(e)}",
+                "exported_count": 0,
+                "error": str(e)
+            }
+
+    def filter_and_export(self,
+                         articles: List[NewsArticle],
+                         filter_type: str = "chain",
+                         output_format: str = "console",
+                         output_path: Optional[str] = None,
+                         enable_translation: bool = True,
+                         progress_callback: Optional[FilterProgressCallback] = None,
+                         **export_options) -> Dict[str, Any]:
+        """
+        筛选文章并导出为表格
+
+        Args:
+            articles: 文章列表
+            filter_type: 筛选类型
+            output_format: 输出格式
+            output_path: 输出路径
+            enable_translation: 是否启用翻译
+            progress_callback: 进度回调
+            **export_options: 导出选项
+
+        Returns:
+            包含筛选和导出结果的字典
+        """
+        # 执行筛选
+        filter_result = self.filter_articles(
+            articles=articles,
+            filter_type=filter_type,
+            progress_callback=progress_callback
+        )
+
+        # 导出表格
+        export_result = self.export_results_to_table(
+            result=filter_result,
+            output_format=output_format,
+            output_path=output_path,
+            enable_translation=enable_translation,
+            **export_options
+        )
+
+        # 合并结果
+        return {
+            "filter_result": {
+                "total_articles": filter_result.total_articles,
+                "selected_count": filter_result.final_selected_count,
+                "processing_time": filter_result.total_processing_time,
+                "tag_statistics": filter_result.tag_statistics.__dict__ if filter_result.tag_statistics else None
+            },
+            "export_result": export_result,
+            "success": export_result.get("success", False)
+        }
 
 
 class CLIProgressCallback(FilterProgressCallback):

@@ -10,8 +10,8 @@ from ..config.filter_config import FilterChainConfig
 from .keyword_filter import KeywordFilter
 from .ai_filter import AIFilter
 from .base import (
-    FilterChainResult, CombinedFilterResult, 
-    KeywordFilterResult, AIFilterResult
+    FilterChainResult, CombinedFilterResult,
+    KeywordFilterResult, AIFilterResult, ArticleTag
 )
 
 logger = logging.getLogger(__name__)
@@ -87,14 +87,69 @@ class FilterProgressCallback:
 
 class FilterChain:
     """筛选链管理器"""
-    
-    def __init__(self, 
+
+    def __init__(self,
                  keyword_filter: KeywordFilter,
                  ai_filter: AIFilter,
                  config: FilterChainConfig):
         self.keyword_filter = keyword_filter
         self.ai_filter = ai_filter
         self.config = config
+
+        # 初始化标签计数器、生成器和平衡选择器
+        self.tag_counter = None
+        self.tag_generator = None
+        self.balanced_selector = None
+
+        # 安全地访问tag_balance配置
+        tag_balance_config = config.tag_balance
+
+        # 如果tag_balance是字典，转换为对象访问
+        if isinstance(tag_balance_config, dict):
+            enable_tag_limits = tag_balance_config.get('enable_tag_limits', False)
+            enable_tag_generation = tag_balance_config.get('enable_tag_generation', False)
+            enable_balanced_selection = tag_balance_config.get('enable_balanced_selection', False)
+            tag_limits = tag_balance_config.get('tag_limits', {})
+            min_tag_score = tag_balance_config.get('min_tag_score', 0.2)
+            max_tags_per_article = tag_balance_config.get('max_tags_per_article', 5)
+            primary_tag_threshold = tag_balance_config.get('primary_tag_threshold', 0.5)
+            underrepresented_boost = tag_balance_config.get('underrepresented_boost', 1.5)
+        else:
+            # 对象访问
+            enable_tag_limits = getattr(tag_balance_config, 'enable_tag_limits', False)
+            enable_tag_generation = getattr(tag_balance_config, 'enable_tag_generation', False)
+            enable_balanced_selection = getattr(tag_balance_config, 'enable_balanced_selection', False)
+            tag_limits = getattr(tag_balance_config, 'tag_limits', {})
+            min_tag_score = getattr(tag_balance_config, 'min_tag_score', 0.2)
+            max_tags_per_article = getattr(tag_balance_config, 'max_tags_per_article', 5)
+            primary_tag_threshold = getattr(tag_balance_config, 'primary_tag_threshold', 0.5)
+            underrepresented_boost = getattr(tag_balance_config, 'underrepresented_boost', 1.5)
+
+        if enable_tag_limits:
+            from .tag_counter import TagCounter
+            self.tag_counter = TagCounter(tag_limits)
+
+        if enable_tag_generation:
+            from .tag_generator import TagGenerator
+            self.tag_generator = TagGenerator(
+                min_tag_score=min_tag_score,
+                max_tags_per_article=max_tags_per_article,
+                primary_tag_threshold=primary_tag_threshold
+            )
+
+        if enable_balanced_selection and self.tag_counter:
+            from .balanced_selector import BalancedSelector, BalanceStrategy
+            strategy = BalanceStrategy(
+                underrepresented_boost=underrepresented_boost
+            )
+            self.balanced_selector = BalancedSelector(self.tag_counter, strategy)
+
+        # 初始化标签分析器
+        if enable_tag_generation:
+            from .tag_analyzer import TagAnalyzer
+            self.tag_analyzer = TagAnalyzer(tag_limits)
+        else:
+            self.tag_analyzer = None
     
     def process(self, articles: List[NewsArticle]) -> FilterChainResult:
         """执行完整的筛选流程"""
@@ -352,18 +407,56 @@ class FilterChain:
                 keyword_result, ai_result, final_score
             )
 
+            # 生成或增强标签
+            tags = self._generate_combined_tags(keyword_result, ai_result)
+
             combined_result = CombinedFilterResult(
                 article=keyword_result.article,
                 keyword_result=keyword_result,
                 ai_result=ai_result,
                 final_score=final_score,
                 selected=selected,
-                rejection_reason=rejection_reason
+                rejection_reason=rejection_reason,
+                tags=tags
             )
 
             combined_results.append(combined_result)
 
+        # 如果启用了标签平衡，应用平衡筛选
+        if self.config.tag_balance.enable_balanced_selection and self.tag_counter:
+            combined_results = self._apply_balanced_selection(combined_results)
+
         return combined_results
+
+    def _generate_combined_tags(self, keyword_result: KeywordFilterResult,
+                               ai_result: Optional[AIFilterResult]) -> List:
+        """生成综合标签"""
+        if not self.tag_generator:
+            return keyword_result.tags if keyword_result.tags else []
+
+        # 从关键词结果获取标签
+        tags = keyword_result.tags if keyword_result.tags else []
+
+        # 如果没有标签，从关键词结果生成
+        if not tags:
+            tags = self.tag_generator.generate_tags_from_keyword_result(keyword_result)
+
+        # 使用AI结果增强标签
+        if ai_result:
+            tags = self.tag_generator.enhance_tags_with_ai_result(tags, ai_result)
+
+        return tags
+
+    def _apply_balanced_selection(self, combined_results: List[CombinedFilterResult]) -> List[CombinedFilterResult]:
+        """应用标签平衡筛选"""
+        if not self.balanced_selector:
+            return combined_results
+
+        # 使用平衡选择器进行筛选
+        return self.balanced_selector.select_balanced_articles(
+            combined_results,
+            max_results=self.config.max_final_results
+        )
 
     def _calculate_final_score(self, keyword_result: KeywordFilterResult,
                              ai_result: Optional[AIFilterResult]) -> float:
@@ -442,6 +535,27 @@ class FilterChain:
 
         if self.config.include_rejected:
             result.rejected_articles = rejected
+
+        # 生成标签统计
+        if self.tag_analyzer:
+            result.tag_statistics = self.tag_analyzer.analyze_results(selected)
+            logger.info(f"标签统计生成完成: {len(result.tag_statistics.tag_distribution)} 个标签")
+
+            # 打印标签分布摘要
+            if result.tag_statistics.tag_distribution:
+                print("📊 标签分布统计:")
+                for tag_name, count in sorted(result.tag_statistics.tag_distribution.items(),
+                                            key=lambda x: x[1], reverse=True):
+                    fill_ratio = result.tag_statistics.tag_fill_ratios.get(tag_name, 0) * 100
+                    print(f"   {tag_name}: {count} 篇 ({fill_ratio:.1f}%)")
+
+                print(f"📈 多样性评分: {result.tag_statistics.tag_diversity_score*100:.1f}%")
+                print(f"🏷️  平均标签数: {result.tag_statistics.average_tags_per_article:.1f}")
+
+                if result.tag_statistics.underrepresented_tags:
+                    print(f"⚠️  代表性不足: {', '.join(result.tag_statistics.underrepresented_tags[:3])}")
+                if result.tag_statistics.overrepresented_tags:
+                    print(f"⚡ 过度集中: {', '.join(result.tag_statistics.overrepresented_tags[:3])}")
 
     def _get_article_id(self, article: NewsArticle) -> str:
         """获取文章唯一标识"""
