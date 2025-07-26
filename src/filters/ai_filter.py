@@ -58,15 +58,18 @@ class AIFilter(BaseFilter):
         else:
             print(f"⚠️  AI筛选无有效结果: 可能是API调用失败或所有文章评分过低")
 
-        # 按总分排序，取评分最高的前N条
+        # 按总分排序
         results.sort(key=lambda x: x.evaluation.total_score, reverse=True)
 
-        # 取前max_selected条结果
-        max_selected = getattr(self.config, 'max_selected', 3)  # 默认3条
-        selected_results = results[:max_selected]
+        # 新的筛选逻辑：基于分数阈值筛选
+        min_score_threshold = getattr(self.config, 'min_score_threshold', 20)  # 默认20分
 
-        print(f"✅ AI筛选最终结果: 选择了前 {len(selected_results)} 条评分最高的文章")
-        logger.info(f"AI筛选完成: 处理了{len(results)}篇文章，选择了前{len(selected_results)}条评分最高的文章")
+        # 筛选超过阈值分数的文章
+        selected_results = [r for r in results if r.evaluation.total_score >= min_score_threshold]
+
+        print(f"🎯 分数阈值筛选: {len(selected_results)} 篇文章超过 {min_score_threshold} 分阈值")
+        print(f"✅ AI筛选最终结果: 选择了 {len(selected_results)} 篇超过 {min_score_threshold} 分的文章")
+        logger.info(f"AI筛选完成: 处理了{len(results)}篇文章，最终选择了{len(selected_results)}篇超过{min_score_threshold}分阈值的文章")
 
         return selected_results
     

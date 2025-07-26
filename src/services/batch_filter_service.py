@@ -71,8 +71,28 @@ class BatchFilterConfig:
         # 结果配置
         self.max_results_per_subscription: Optional[int] = None  # 每个订阅源最大结果数
         self.min_score_threshold: Optional[float] = None  # 最小分数阈值
+        self.max_total_articles: Optional[int] = None  # 批量筛选最大文章数限制
         self.sort_by: str = "final_score"  # 排序方式: final_score, published, subscription
         self.group_by_subscription: bool = True  # 是否按订阅源分组显示
+
+    def set_ai_filter_rules(self, min_score: int = 20, max_articles: int = 30):
+        """
+        设置AI筛选规则的便捷方法
+
+        Args:
+            min_score: AI筛选最低分数阈值（默认20分）
+            max_articles: 批量筛选最大文章数限制（默认30篇）
+        """
+        self.max_total_articles = max_articles
+        print(f"🎯 设置AI筛选规则: 最低分数 {min_score} 分，最大文章数 {max_articles} 篇")
+
+        # 同时更新FilterService的AI配置
+        try:
+            from .filter_service import filter_service
+            filter_service.update_config("ai", min_score_threshold=min_score, batch_max_articles=max_articles)
+            print(f"✅ AI筛选配置已更新")
+        except Exception as e:
+            print(f"⚠️  更新AI筛选配置失败: {e}")
 
 
 
@@ -181,6 +201,15 @@ class CustomRSSBatchFilterManager:
         """顺序处理RSS订阅源"""
         for i, feed in enumerate(feeds):
             try:
+                # 检查是否已达到文章数量限制
+                if config.max_total_articles:
+                    current_total = sum(r.filter_result.final_selected_count for r in batch_result.subscription_results)
+                    if current_total >= config.max_total_articles:
+                        print(f"🛑 批量筛选提前退出: 已达到文章数量限制 {config.max_total_articles} 篇")
+                        logger.info(f"Batch filtering stopped: reached max articles limit ({config.max_total_articles})")
+                        batch_result.warnings.append(f"已达到最大文章数量限制 {config.max_total_articles}，提前退出筛选")
+                        break
+
                 if callback:
                     subscription = self._rss_feed_to_subscription(feed)
                     callback.on_subscription_start(subscription, i + 1, len(feeds))
@@ -188,6 +217,15 @@ class CustomRSSBatchFilterManager:
                 result = self._process_single_rss_feed(feed, config, callback)
                 batch_result.subscription_results.append(result)
                 batch_result.processed_subscriptions += 1
+
+                # 处理完成后再次检查文章数量
+                if config.max_total_articles:
+                    current_total = sum(r.filter_result.final_selected_count for r in batch_result.subscription_results)
+                    print(f"📊 当前累计筛选文章数: {current_total}/{config.max_total_articles}")
+                    if current_total >= config.max_total_articles:
+                        print(f"🛑 批量筛选达到限制: 累计筛选了 {current_total} 篇文章")
+                        logger.info(f"Batch filtering completed: reached max articles limit ({current_total} articles)")
+                        break
 
             except Exception as e:
                 logger.error(f"Error processing RSS feed {feed.title}: {e}")
@@ -199,6 +237,13 @@ class CustomRSSBatchFilterManager:
                                   batch_result: BatchFilterResult,
                                   callback: Optional[BatchFilterProgressCallback]):
         """并行处理RSS订阅源"""
+        # 如果设置了文章数量限制，使用顺序处理以便更好地控制
+        if config.max_total_articles:
+            print(f"⚠️  检测到文章数量限制 ({config.max_total_articles})，切换到顺序处理模式")
+            logger.info(f"Switching to sequential processing due to max articles limit: {config.max_total_articles}")
+            self._process_rss_feeds_sequential(feeds, config, batch_result, callback)
+            return
+
         with ThreadPoolExecutor(max_workers=config.max_workers) as executor:
             # 提交任务
             future_to_feed = {
@@ -352,6 +397,19 @@ class CustomRSSBatchFilterManager:
                     )
                 filter_result.final_results = filter_result.final_results[:config.max_results_per_subscription]
                 filter_result.final_selected_count = len(filter_result.final_results)
+
+    def _rss_feed_to_subscription(self, feed: RSSFeed):
+        """将RSS Feed转换为订阅源对象（用于回调）"""
+        # 创建一个简单的订阅源对象，包含必要的信息
+        class SimpleSubscription:
+            def __init__(self, feed: RSSFeed):
+                self.id = feed.id
+                self.title = feed.title
+                self.url = feed.url
+                self.category = getattr(feed, 'category', '默认')
+                self.description = getattr(feed, 'description', '')
+
+        return SimpleSubscription(feed)
 
     def _calculate_batch_statistics(self, batch_result: BatchFilterResult):
         """计算批量筛选统计信息"""

@@ -301,16 +301,27 @@ class FilterConfigDialog:
         ttk.Spinbox(filter_frame, from_=1, to=200, textvariable=self.config_vars['max_requests'],
                    width=10).grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
 
-        # 最大筛选数量
-        ttk.Label(filter_frame, text="最大筛选数量:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
-        if 'max_selected' not in self.config_vars:
-            self.config_vars['max_selected'] = tk.IntVar()
-        ttk.Spinbox(filter_frame, from_=1, to=20, textvariable=self.config_vars['max_selected'],
+        # 分数阈值筛选
+        ttk.Label(filter_frame, text="最低分数阈值:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        if 'min_score_threshold' not in self.config_vars:
+            self.config_vars['min_score_threshold'] = tk.IntVar()
+        ttk.Spinbox(filter_frame, from_=0, to=30, textvariable=self.config_vars['min_score_threshold'],
                    width=10).grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
 
-        # 添加说明标签
-        ttk.Label(filter_frame, text="(按评分排序取前N条)", font=("TkDefaultFont", 8)).grid(
+        # 分数阈值说明
+        ttk.Label(filter_frame, text="(只选择超过此分数的文章)", font=("TkDefaultFont", 8)).grid(
             row=1, column=2, sticky=tk.W, padx=5, pady=5)
+
+        # 批量筛选最大文章数
+        ttk.Label(filter_frame, text="批量最大文章数:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
+        if 'batch_max_articles' not in self.config_vars:
+            self.config_vars['batch_max_articles'] = tk.IntVar()
+        ttk.Spinbox(filter_frame, from_=1, to=200, textvariable=self.config_vars['batch_max_articles'],
+                   width=10).grid(row=2, column=1, sticky=tk.W, padx=5, pady=5)
+
+        # 批量筛选说明
+        ttk.Label(filter_frame, text="(批量筛选时达到此数量自动停止)", font=("TkDefaultFont", 8)).grid(
+            row=2, column=2, sticky=tk.W, padx=5, pady=5)
 
     def create_ai_advanced_settings(self, parent):
         """创建AI高级设置区域"""
@@ -597,7 +608,8 @@ class FilterConfigDialog:
         # 加载AI配置
         ai_config = default_config["ai"]
         self.config_vars['max_requests'].set(ai_config.get('max_requests', 50))
-        self.config_vars['max_selected'].set(ai_config.get('max_selected', 3))
+        self.config_vars['min_score_threshold'].set(ai_config.get('min_score_threshold', 20))
+        self.config_vars['batch_max_articles'].set(ai_config.get('batch_max_articles', 30))
         self.config_vars['enable_cache'].set(ai_config.get('enable_cache', True))
         self.config_vars['fallback_enabled'].set(ai_config.get('fallback_enabled', True))
         self.config_vars['api_key'].set(ai_config.get('api_key', ''))
@@ -680,7 +692,8 @@ class FilterConfigDialog:
                 "temperature": 0.3,
                 "max_tokens": 1000,
                 "max_requests": self.config_vars['max_requests'].get(),
-                "max_selected": self.config_vars['max_selected'].get(),
+                "min_score_threshold": self.config_vars['min_score_threshold'].get(),
+                "batch_max_articles": self.config_vars['batch_max_articles'].get(),
                 "batch_size": 5,
                 "timeout": 30,
                 "retry_times": 3,

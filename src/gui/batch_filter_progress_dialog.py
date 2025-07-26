@@ -7,7 +7,6 @@ from typing import Optional
 
 from ..services.batch_filter_service import BatchFilterProgressCallback
 from ..filters.base import BatchFilterResult
-from ..models.subscription import Subscription
 
 
 class BatchFilterProgressDialog(BatchFilterProgressCallback):
@@ -183,26 +182,28 @@ class BatchFilterProgressDialog(BatchFilterProgressCallback):
         self.add_log_message(f"开始批量筛选，共 {total_subscriptions} 个订阅源")
         self.update_progress()
     
-    def on_subscription_start(self, subscription: Subscription, current: int, total: int):
+    def on_subscription_start(self, subscription, current: int, total: int):
         """开始处理订阅源"""
         self.current_subscription = current
-        self.current_sub_var.set(f"正在处理: {subscription.get_display_title()}")
+        # 使用title属性，如果没有则使用id
+        display_title = getattr(subscription, 'title', subscription.id)[:50]
+        self.current_sub_var.set(f"正在处理: {display_title}")
         self.add_log_message(f"[{current}/{total}] 开始处理订阅源: {subscription.title}")
         self.update_progress()
-    
-    def on_subscription_fetch_complete(self, subscription: Subscription, articles_count: int):
+
+    def on_subscription_fetch_complete(self, subscription, articles_count: int):
         """订阅源文章获取完成"""
         self.total_articles_fetched += articles_count
         self.add_log_message(f"获取到 {articles_count} 篇文章")
         self.update_progress()
-    
-    def on_subscription_filter_complete(self, subscription: Subscription, selected_count: int):
+
+    def on_subscription_filter_complete(self, subscription, selected_count: int):
         """订阅源筛选完成"""
         self.total_articles_selected += selected_count
         self.add_log_message(f"筛选完成，选中 {selected_count} 篇文章")
         self.update_progress()
-    
-    def on_subscription_error(self, subscription: Subscription, error: str):
+
+    def on_subscription_error(self, subscription, error: str):
         """订阅源处理错误"""
         self.add_log_message(f"处理失败: {error}", "ERROR")
     

@@ -384,19 +384,27 @@ class FilterChain:
                            ai_result: Optional[AIFilterResult],
                            final_score: float) -> Tuple[bool, Optional[str]]:
         """判断文章是否被选中"""
+        article_title = keyword_result.article.title[:30] + "..."
+
         # 关键词筛选未通过
         if keyword_result.relevance_score < self.config.keyword_threshold:
+            print(f"   ❌ {article_title}: 关键词相关性不足 ({keyword_result.relevance_score:.3f} < {self.config.keyword_threshold})")
             return False, "关键词相关性不足"
 
-        # AI筛选已经按排名选择了最优文章，无需再次阈值判断
-        # AI筛选失败但关键词分数较高
-        if ai_result is None and keyword_result.relevance_score >= 0.8:
-            return True, None
+        # 修复：只有通过AI筛选的文章才能被最终选中
+        # 这确保了统计数字的一致性
+        if ai_result is None:
+            print(f"   ❌ {article_title}: 没有AI筛选结果，不能被选中 (关键词:{keyword_result.relevance_score:.3f})")
+            return False, "没有AI筛选结果"
 
         # 综合分数判断
         if final_score >= self.config.final_score_threshold:
+            ai_score = ai_result.evaluation.total_score if ai_result else 0
+            print(f"   ✅ {article_title}: 综合分数通过 (最终:{final_score:.3f}, 关键词:{keyword_result.relevance_score:.3f}, AI:{ai_score}/30)")
             return True, None
         else:
+            ai_score = ai_result.evaluation.total_score if ai_result else 0
+            print(f"   ❌ {article_title}: 综合评分不足 (最终:{final_score:.3f} < {self.config.final_score_threshold}, 关键词:{keyword_result.relevance_score:.3f}, AI:{ai_score}/30)")
             return False, "综合评分不足"
 
     def _finalize_results(self, combined_results: List[CombinedFilterResult],
@@ -405,6 +413,17 @@ class FilterChain:
         # 分离选中和被拒绝的文章
         selected = [r for r in combined_results if r.selected]
         rejected = [r for r in combined_results if not r.selected]
+
+        print(f"🔍 _finalize_results调试信息:")
+        print(f"   combined_results总数: {len(combined_results)}")
+        print(f"   selected数量: {len(selected)}")
+        print(f"   rejected数量: {len(rejected)}")
+        print(f"   AI筛选通过数量: {result.ai_filtered_count}")
+
+        # 显示选中文章的详细信息
+        for i, r in enumerate(selected):
+            has_ai = "有AI结果" if r.ai_result else "无AI结果"
+            print(f"   选中文章{i+1}: {r.article.title[:30]}... (最终分数:{r.final_score:.3f}, {has_ai})")
 
         # 按最终分数排序
         if self.config.sort_by == "final_score":
