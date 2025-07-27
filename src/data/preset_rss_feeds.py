@@ -35,6 +35,42 @@ PRESET_RSS_FEEDS = [
         "category": "科技新闻",
         "description": "消费电子和科技产品新闻"
     },
+    {
+        "name": "CNET",
+        "url": "https://www.cnet.com/rss/news/",
+        "category": "科技新闻",
+        "description": "科技新闻、评测和购买指南"
+    },
+    {
+        "name": "ZDNet",
+        "url": "https://www.zdnet.com/news/rss.xml",
+        "category": "科技新闻",
+        "description": "企业技术和IT新闻"
+    },
+    {
+        "name": "BBC Technology",
+        "url": "http://feeds.bbci.co.uk/news/technology/rss.xml",
+        "category": "科技新闻",
+        "description": "BBC科技新闻"
+    },
+    {
+        "name": "Reuters Technology",
+        "url": "https://feeds.reuters.com/reuters/technologyNews",
+        "category": "科技新闻",
+        "description": "路透社科技新闻"
+    },
+    {
+        "name": "VentureBeat",
+        "url": "https://venturebeat.com/feed/",
+        "category": "科技新闻",
+        "description": "科技创业和创新新闻"
+    },
+    {
+        "name": "Mashable Tech",
+        "url": "https://mashable.com/feeds/rss/tech",
+        "category": "科技新闻",
+        "description": "数字文化和科技新闻"
+    },
     
     # 中文科技新闻
     {
@@ -74,6 +110,18 @@ PRESET_RSS_FEEDS = [
         "url": "https://www.technologyreview.com/topic/artificial-intelligence/feed/",
         "category": "人工智能",
         "description": "MIT科技评论AI专栏"
+    },
+    {
+        "name": "MIT Technology Review",
+        "url": "https://www.technologyreview.com/feed/",
+        "category": "科技新闻",
+        "description": "MIT科技评论主站"
+    },
+    {
+        "name": "AI Research",
+        "url": "https://airesearch.com/feed/",
+        "category": "人工智能",
+        "description": "AI研究和发展动态"
     },
     {
         "name": "OpenAI Blog",
@@ -138,6 +186,18 @@ PRESET_RSS_FEEDS = [
         "url": "http://www.ruanyifeng.com/blog/atom.xml",
         "category": "开发者",
         "description": "技术博客和周刊"
+    },
+    {
+        "name": "InfoWorld",
+        "url": "https://www.infoworld.com/index.rss",
+        "category": "开发者",
+        "description": "企业技术和软件开发新闻"
+    },
+    {
+        "name": "TechRepublic",
+        "url": "https://www.techrepublic.com/rssfeeds/articles/",
+        "category": "开发者",
+        "description": "IT专业人士资源和新闻"
     },
     
     # 产业与商业
@@ -205,6 +265,18 @@ PRESET_RSS_FEEDS = [
         "category": "科学",
         "description": "工程技术新闻"
     },
+    {
+        "name": "New Scientist",
+        "url": "https://www.newscientist.com/feed/home/",
+        "category": "科学",
+        "description": "科学发现和技术创新"
+    },
+    {
+        "name": "Scientific American",
+        "url": "http://rss.sciam.com/ScientificAmerican-Global",
+        "category": "科学",
+        "description": "科学美国人杂志"
+    },
     
     # 游戏与娱乐
     {
@@ -224,20 +296,59 @@ PRESET_RSS_FEEDS = [
         "url": "https://www.gcores.com/rss",
         "category": "游戏",
         "description": "游戏文化媒体"
+    },
+    
+    # 政府科技决策
+    {
+        "name": "美国白宫新闻",
+        "url": "https://www.whitehouse.gov/feed/",
+        "category": "政府科技",
+        "description": "美国白宫官方新闻发布"
+    },
+    {
+        "name": "美国国家标准技术研究院",
+        "url": "https://www.nist.gov/news/rss.xml",
+        "category": "政府科技",
+        "description": "NIST技术标准和研究新闻"
+    },
+    {
+        "name": "英国政府新闻",
+        "url": "https://www.gov.uk/search/news-and-communications.atom",
+        "category": "政府科技",
+        "description": "英国政府官方新闻发布"
+    },
+    {
+        "name": "德国健康研究部",
+        "url": "https://www.gesundheitsforschung-bmbf.de/rss-feed-5806.php",
+        "category": "政府科技",
+        "description": "德国联邦教育研究部健康研究新闻"
+    },
+    {
+        "name": "加拿大政府新闻",
+        "url": "https://www.canada.ca/en/news/web-feeds.html",
+        "category": "政府科技",
+        "description": "加拿大政府官方新闻发布"
+    },
+    {
+        "name": "澳大利亚工业科学部",
+        "url": "https://www.industry.gov.au/contact-us/rss-feeds",
+        "category": "政府科技",
+        "description": "澳大利亚工业科学与资源部新闻"
     }
 ]
 
 # 按分类组织的RSS源
 RSS_CATEGORIES = {
-    "科技新闻": ["TechCrunch", "Ars Technica", "The Verge", "Wired", "Engadget"],
+    "科技新闻": ["TechCrunch", "Ars Technica", "The Verge", "Wired", "Engadget", "CNET", "ZDNet", "BBC Technology", "Reuters Technology", "VentureBeat", "Mashable Tech", "MIT Technology Review"],
     "中文科技": ["36氪", "虎嗅网", "少数派", "爱范儿"],
-    "人工智能": ["AI News", "MIT Technology Review AI", "OpenAI Blog", "机器之心"],
+    "人工智能": ["AI News", "MIT Technology Review AI", "AI Research", "OpenAI Blog", "机器之心"],
     "区块链": ["CoinDesk", "Cointelegraph", "链闻"],
-    "开发者": ["GitHub Blog", "Stack Overflow Blog", "Hacker News", "Dev.to", "阮一峰的网络日志"],
+    "开发者": ["GitHub Blog", "Stack Overflow Blog", "Hacker News", "Dev.to", "阮一峰的网络日志", "InfoWorld", "TechRepublic"],
     "商业": ["Harvard Business Review", "Fast Company", "Forbes Technology", "经济学人"],
     "设计": ["Smashing Magazine", "A List Apart", "Designer News"],
-    "科学": ["Nature News", "Science News", "IEEE Spectrum"],
-    "游戏": ["GameSpot", "IGN", "机核网"]
+    "科学": ["Nature News", "Science News", "IEEE Spectrum", "New Scientist", "Scientific American"],
+    "游戏": ["GameSpot", "IGN", "机核网"],
+    "政府科技": ["美国白宫新闻", "美国国家标准技术研究院", "英国政府新闻", "德国健康研究部", "加拿大政府新闻", "澳大利亚工业科学部"]
 }
 
 def get_feeds_by_category(category: str = None):

@@ -114,19 +114,26 @@ class AIFilter(BaseFilter):
                     self.metrics.record_cache_miss()
                     logger.debug(f"缓存未命中: {article_title}")
 
-            # AI评估（获取原始响应）
-            logger.debug(f"开始AI评估: {article_title}")
-
-            # 尝试获取原始响应
-            raw_response = ""
-            if hasattr(self.client, 'evaluate_article_with_raw_response'):
-                try:
-                    evaluation, raw_response = self.client.evaluate_article_with_raw_response(article)
-                except Exception as e:
-                    logger.warning(f"获取原始响应失败，降级到普通评估: {e}")
-                    evaluation = self.client.evaluate_article(article)
+            # 检查是否启用测试模式
+            if self.config.test_mode:
+                logger.debug(f"测试模式: 生成模拟评估数据 - {article_title}")
+                evaluation, raw_response = self._generate_test_evaluation(article)
+                # 模拟AI调用延迟
+                time.sleep(self.config.test_mode_delay)
             else:
-                evaluation = self.client.evaluate_article(article)
+                # AI评估（获取原始响应）
+                logger.debug(f"开始AI评估: {article_title}")
+
+                # 尝试获取原始响应
+                raw_response = ""
+                if hasattr(self.client, 'evaluate_article_with_raw_response'):
+                    try:
+                        evaluation, raw_response = self.client.evaluate_article_with_raw_response(article)
+                    except Exception as e:
+                        logger.warning(f"获取原始响应失败，降级到普通评估: {e}")
+                        evaluation = self.client.evaluate_article(article)
+                else:
+                    evaluation = self.client.evaluate_article(article)
 
             # 记录评估详情
             logger.info(f"AI评估完成: {article_title}")
@@ -195,6 +202,44 @@ class AIFilter(BaseFilter):
     
     def _process_batch(self, articles: List[NewsArticle]) -> List[AIFilterResult]:
         """处理文章批次"""
+        # 检查是否启用测试模式
+        if self.config.test_mode:
+            print(f"🧪 测试模式：批量生成 {len(articles)} 篇文章的模拟评估数据")
+            test_results = []
+            start_time = time.time()
+            
+            for i, article in enumerate(articles):
+                evaluation, _ = self._generate_test_evaluation(article)
+                print(f"   测试文章{i+1}: 分数={evaluation.total_score:.1f}, 置信度={evaluation.confidence:.2f}, 标题={article.title[:40]}...")
+                
+                # 创建AI筛选结果
+                ai_result = AIFilterResult(
+                    article=article,
+                    evaluation=evaluation,
+                    processing_time=self.config.test_mode_delay,
+                    ai_model="test_mode",
+                    cached=False
+                )
+                
+                # 保存测试分析结果到本地存储
+                try:
+                    from ..utils.ai_analysis_storage import ai_analysis_storage
+                    ai_analysis_storage.save_analysis(article, ai_result, "测试模式批量评估")
+                except Exception as e:
+                    logger.warning(f"保存测试AI分析结果失败: {e}")
+                
+                test_results.append(ai_result)
+                
+                # 模拟处理延迟
+                if self.config.test_mode_delay > 0:
+                    time.sleep(self.config.test_mode_delay)
+            
+            processing_time = time.time() - start_time
+            print(f"✅ 测试模式批量评估完成: 耗时 {processing_time:.2f}s, 生成 {len(test_results)} 个模拟结果")
+            self.metrics.record_processing_time(processing_time * 1000)
+            
+            return test_results
+        
         # 检查缓存，分离已缓存和未缓存的文章
         cached_results = []
         uncached_articles = []
@@ -334,6 +379,117 @@ class AIFilter(BaseFilter):
             risk_assessment="",
             implementation_suggestions=[]
         )
+    
+    def _generate_test_evaluation(self, article: NewsArticle) -> tuple[AIEvaluation, str]:
+        """生成测试模式的模拟评估数据"""
+        import random
+        import hashlib
+        
+        # 基于文章标题生成确定性的随机种子，确保同一文章总是得到相同的评估结果
+        seed = int(hashlib.md5(article.title.encode()).hexdigest()[:8], 16)
+        random.seed(seed)
+        
+        # 生成模拟评分（基于文章标题中的关键词进行简单启发式评估）
+        title_lower = article.title.lower()
+        
+        # 基础分数
+        base_relevance = random.randint(4, 8)
+        base_innovation = random.randint(4, 8)
+        base_practicality = random.randint(4, 8)
+        
+        # 根据标题关键词调整分数
+        tech_keywords = ['ai', 'artificial intelligence', '人工智能', 'quantum', '量子', 'biotech', '生物技术', 
+                        'semiconductor', '半导体', '5g', '6g', 'cybersecurity', '网络安全', 'blockchain', '区块链']
+        policy_keywords = ['policy', '政策', 'regulation', '监管', 'government', '政府', 'strategy', '战略']
+        innovation_keywords = ['innovation', '创新', 'breakthrough', '突破', 'research', '研究', 'development', '发展']
+        
+        # 技术相关性加分
+        tech_bonus = sum(2 for keyword in tech_keywords if keyword in title_lower)
+        policy_bonus = sum(1 for keyword in policy_keywords if keyword in title_lower)
+        innovation_bonus = sum(1 for keyword in innovation_keywords if keyword in title_lower)
+        
+        relevance_score = min(10, base_relevance + tech_bonus + policy_bonus)
+        innovation_impact = min(10, base_innovation + innovation_bonus + tech_bonus // 2)
+        practicality = min(10, base_practicality + policy_bonus)
+        
+        total_score = relevance_score + innovation_impact + practicality
+        confidence = random.uniform(0.7, 0.95)
+        
+        # 生成模拟的评估理由
+        reasoning_templates = [
+            "这篇文章涉及{tech_area}领域的最新发展，对科技政策制定具有重要参考价值。",
+            "文章讨论了{tech_area}的创新应用，展现了良好的实用性和发展前景。",
+            "该内容关注{tech_area}的政策导向，为相关决策提供了有价值的信息。",
+            "文章分析了{tech_area}的技术趋势，对产业发展具有指导意义。"
+        ]
+        
+        # 根据关键词确定技术领域
+        if any(kw in title_lower for kw in ['ai', 'artificial intelligence', '人工智能']):
+            tech_area = "人工智能"
+        elif any(kw in title_lower for kw in ['quantum', '量子']):
+            tech_area = "量子技术"
+        elif any(kw in title_lower for kw in ['biotech', '生物技术', 'bio']):
+            tech_area = "生物技术"
+        elif any(kw in title_lower for kw in ['semiconductor', '半导体', 'chip']):
+            tech_area = "半导体"
+        elif any(kw in title_lower for kw in ['5g', '6g', 'network', '网络']):
+            tech_area = "通信网络"
+        else:
+            tech_area = "科技创新"
+        
+        reasoning = random.choice(reasoning_templates).format(tech_area=tech_area)
+        
+        # 生成模拟的关键洞察
+        key_insights = [
+            f"{tech_area}领域的技术发展趋势",
+            "政策影响分析",
+            "产业应用前景评估"
+        ][:random.randint(1, 3)]
+        
+        # 生成模拟的标签
+        possible_tags = ['artificial_intelligence', 'quantum_technology', 'biotechnology', 
+                        'semiconductor', '5g_6g_networks', 'cybersecurity', 'tech_policy', 
+                        'industry_development', 'international_cooperation']
+        tags = random.sample(possible_tags, random.randint(1, 3))
+        
+        evaluation = AIEvaluation(
+            relevance_score=relevance_score,
+            innovation_impact=innovation_impact,
+            practicality=practicality,
+            total_score=total_score,
+            reasoning=reasoning,
+            confidence=confidence,
+            summary=f"测试模式模拟评估：{tech_area}相关内容分析",
+            key_insights=key_insights,
+            highlights=[article.title[:100]],
+            tags=tags,
+            detailed_analysis={
+                "技术领域": tech_area,
+                "评估模式": "测试模式",
+                "相关性评分": relevance_score,
+                "创新影响": innovation_impact,
+                "实用性": practicality
+            },
+            recommendation_reason=f"基于{tech_area}领域的重要性和文章内容的相关性",
+            risk_assessment="测试模式下的模拟风险评估",
+            implementation_suggestions=["建议关注相关政策动向", "跟踪技术发展趋势"]
+        )
+        
+        # 生成模拟的原始响应
+        raw_response = f"""测试模式模拟响应：
+文章标题：{article.title}
+技术领域：{tech_area}
+评估结果：
+- 政策相关性：{relevance_score}/10
+- 创新影响：{innovation_impact}/10  
+- 实用性：{practicality}/10
+- 总分：{total_score}/30
+- 置信度：{confidence:.2f}
+评估理由：{reasoning}
+
+注意：这是测试模式生成的模拟数据，未调用真实AI API。"""
+        
+        return evaluation, raw_response
 
     def get_metrics(self) -> dict:
         """获取筛选指标"""

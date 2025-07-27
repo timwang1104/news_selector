@@ -18,7 +18,7 @@ class TableExportDialog:
     def __init__(self, parent, data):
         """
         初始化对话框
-
+        
         Args:
             parent: 父窗口
             data: 要导出的数据，可以是文章列表或FilterChainResult
@@ -26,6 +26,7 @@ class TableExportDialog:
         self.parent = parent
         self.dialog = None
         self.export_thread = None
+        self.export_completed = False  # 标记导出是否已完成
 
         # 处理不同类型的输入数据
         if isinstance(data, FilterChainResult):
@@ -50,9 +51,9 @@ class TableExportDialog:
         """显示对话框"""
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("表格导出")
-        self.dialog.geometry("550x500")
+        self.dialog.geometry("550x600")
         self.dialog.resizable(True, True)
-        self.dialog.minsize(500, 450)
+        self.dialog.minsize(500, 550)
         
         # 设置模态
         self.dialog.transient(self.parent)
@@ -280,14 +281,16 @@ class TableExportDialog:
     def preview_export(self):
         """预览导出内容"""
         try:
-            # 这里可以实现预览功能
-            # 暂时显示简单的预览信息
-            preview_text = f"将导出 {len(self.articles)} 篇文章\n"
-            preview_text += f"格式: {self.format_var.get().upper()}\n"
-            preview_text += f"翻译: {'启用' if self.enable_translation_var.get() else '禁用'}\n"
-            preview_text += f"输出: {self.output_path_var.get()}"
+            from .table_preview_dialog import TablePreviewDialog
             
-            messagebox.showinfo("导出预览", preview_text)
+            # 创建并显示详细预览对话框
+            preview_dialog = TablePreviewDialog(
+                parent=self.dialog,
+                articles=self.articles,
+                format_type=self.format_var.get(),
+                enable_translation=self.enable_translation_var.get()
+            )
+            preview_dialog.show()
             
         except Exception as e:
             messagebox.showerror("错误", f"预览失败: {str(e)}")
@@ -349,12 +352,13 @@ class TableExportDialog:
             self.dialog.after(0, lambda: self.progress_var.set(100))
             
             if export_result.get("success", False):
+                self.export_completed = True  # 标记导出完成
                 self.dialog.after(0, lambda: self.status_var.set("导出完成"))
                 self.dialog.after(0, lambda: messagebox.showinfo(
                     "成功", 
                     f"导出完成！\n文件: {self.output_path_var.get()}\n导出数量: {export_result.get('exported_count', 0)} 篇"
                 ))
-                self.dialog.after(0, self.on_close)
+                self.dialog.after(0, self.close_dialog)  # 直接关闭对话框
             else:
                 error_msg = export_result.get("message", "未知错误")
                 self.dialog.after(0, lambda: self.status_var.set(f"导出失败: {error_msg}"))
@@ -370,14 +374,22 @@ class TableExportDialog:
     
     def on_close(self):
         """关闭对话框"""
+        # 如果导出已完成，直接关闭
+        if self.export_completed:
+            self.close_dialog()
+            return
+            
         # 如果正在导出，询问是否取消
         if self.export_thread and self.export_thread.is_alive():
             if messagebox.askyesno("确认", "导出正在进行中，确定要取消吗？"):
                 # 这里可以添加取消导出的逻辑
-                pass
+                self.close_dialog()
             else:
                 return
-        
-        # 关闭对话框
+        else:
+            self.close_dialog()
+    
+    def close_dialog(self):
+        """直接关闭对话框"""
         if self.dialog:
             self.dialog.destroy()

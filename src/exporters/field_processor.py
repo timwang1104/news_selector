@@ -65,7 +65,7 @@ class ArticleFieldProcessor:
         processed_fields = {
             'chinese_title': self._get_chinese_title(article.title),
             'english_title': self._get_english_title(article.title),
-            'chinese_summary': self._get_chinese_summary(article.summary),
+            'chinese_summary': self._get_chinese_summary(article),
             'publisher': self._extract_publisher(article),
             'publish_time': self._format_publish_time(article.published),
             'content': self._clean_content(article.content),
@@ -98,17 +98,42 @@ class ArticleFieldProcessor:
         else:
             return f"[Chinese] {title}"
     
-    def _get_chinese_summary(self, summary: str) -> str:
+    def _get_chinese_summary(self, article: NewsArticle) -> str:
         """获取中文摘要"""
+        summary = article.summary if hasattr(article, 'summary') else ''
+        title = article.title if hasattr(article, 'title') else ''
+        content = article.content if hasattr(article, 'content') else ''
+        
         if not summary:
+            # 如果没有摘要但有标题和内容，尝试生成摘要
+            if self.enable_translation and title and content:
+                try:
+                    from ..services.translation_service import get_translation_service
+                    service = get_translation_service()
+                    if service:
+                        return service.generate_chinese_summary(title, content)
+                except Exception as e:
+                    logger.error(f"摘要生成失败: {e}")
             return "无摘要"
         
-        if self._is_chinese(summary):
-            return summary
-        elif self.enable_translation:
-            return self._translate_to_chinese(summary)
-        else:
-            return f"[英文摘要] {summary[:200]}..."
+        if self.enable_translation:
+            try:
+                from ..services.translation_service import get_translation_service
+                service = get_translation_service()
+                if service:
+                    if self._is_chinese(summary):
+                        # 如果已经是中文摘要，尝试增强质量
+                        return service.enhance_summary(summary, title, content)
+                    else:
+                        # 如果是外文摘要，生成高质量中文摘要
+                        return service.generate_chinese_summary(title, content, summary)
+            except Exception as e:
+                logger.error(f"摘要处理失败: {e}")
+                # 降级到简单翻译
+                if not self._is_chinese(summary):
+                    return self._translate_to_chinese(summary)
+        
+        return summary if self._is_chinese(summary) else f"[英文摘要] {summary[:200]}..."
     
     def _extract_publisher(self, article: NewsArticle) -> str:
         """提取发布单位"""
@@ -267,37 +292,21 @@ class ArticleFieldProcessor:
         return english_chars / max(total_chars, 1) > 0.5
     
     def _translate_to_chinese(self, text: str) -> str:
-        """翻译为中文（占位符，需要集成翻译服务）"""
-        # TODO: 集成翻译API
-        logger.info(f"需要翻译为中文: {text[:50]}...")
-        return f"[待翻译] {text}"
+        """翻译为中文"""
+        try:
+            from ..services.translation_service import get_translation_service
+            service = get_translation_service()
+            return service.translate_to_chinese(text)
+        except Exception as e:
+            logger.error(f"翻译失败: {e}")
+            return f"[翻译失败] {text}"
     
     def _translate_to_english(self, text: str) -> str:
-        """翻译为英文（占位符，需要集成翻译服务）"""
-        # TODO: 集成翻译API
-        logger.info(f"需要翻译为英文: {text[:50]}...")
-        return f"[To be translated] {text}"
-
-
-class TranslationService:
-    """翻译服务接口"""
-    
-    def __init__(self, service_type: str = "baidu"):
-        """
-        初始化翻译服务
-        
-        Args:
-            service_type: 翻译服务类型 (baidu, tencent, google)
-        """
-        self.service_type = service_type
-        # TODO: 初始化具体的翻译服务
-    
-    def translate_to_chinese(self, text: str) -> str:
-        """翻译为中文"""
-        # TODO: 实现具体的翻译逻辑
-        return text
-    
-    def translate_to_english(self, text: str) -> str:
         """翻译为英文"""
-        # TODO: 实现具体的翻译逻辑
-        return text
+        try:
+            from ..services.translation_service import get_translation_service
+            service = get_translation_service()
+            return service.translate_to_english(text)
+        except Exception as e:
+            logger.error(f"翻译失败: {e}")
+            return f"[Translation failed] {text}"

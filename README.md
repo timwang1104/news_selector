@@ -20,6 +20,14 @@
 - 🎯 文章过滤和搜索
 - ⭐ 预设34个优质科技产业RSS源
 
+### 翻译功能 🆕
+- 🌐 有道翻译API集成
+- 🔄 百度翻译API支持
+- 📝 中英文标题和摘要翻译
+- 📊 导出时自动翻译
+- 💾 翻译结果缓存
+- 🎯 智能语言检测
+
 ### 界面功能
 - 💻 友好的命令行界面
 - 🖥️ 直观的图形用户界面
@@ -40,6 +48,34 @@ pip install -r requirements.txt
 ```bash
 cp .env.example .env
 ```
+
+#### 翻译服务配置（可选）
+
+配置AiryLark MCP翻译（推荐）：
+```bash
+# 在 .env 文件中添加
+USE_AIRYLARK_MCP_TRANSLATION=true
+AIRYLARK_MCP_SERVER_NAME=airylark
+```
+
+或配置有道翻译：
+```bash
+# 在 .env 文件中添加
+YOUDAO_TRANSLATE_APP_ID=your_app_id
+YOUDAO_TRANSLATE_SECRET=your_secret_key
+```
+
+或配置百度翻译：
+```bash
+# 在 .env 文件中添加
+BAIDU_TRANSLATE_APP_ID=your_app_id
+BAIDU_TRANSLATE_SECRET=your_secret_key
+```
+
+**获取API密钥**：
+- AiryLark MCP翻译：无需API密钥，通过MCP协议调用
+- 有道翻译：https://ai.youdao.com/
+- 百度翻译：https://fanyi-api.baidu.com/
 
 ### 3. 运行程序
 
@@ -201,7 +237,32 @@ python gui.py
 - 🔬 **科学**: Nature News, Science News, IEEE Spectrum
 - 🎮 **游戏**: GameSpot, IGN, 机核网
 
+### 翻译功能使用
+
+#### 配置翻译服务
+1. **AiryLark MCP翻译（推荐）**：无需API密钥，通过MCP协议调用
+2. **有道翻译**：申请有道智云翻译API
+3. **百度翻译**：申请百度翻译API
+4. **配置环境变量**：在 `.env` 文件中添加相应的配置
+
+#### 使用翻译功能
+- **自动翻译**：在导出文章时，系统会自动检测语言并翻译标题和摘要
+- **智能检测**：自动识别中英文内容，按需翻译
+- **缓存机制**：翻译结果会被缓存，避免重复翻译
+- **多服务支持**：优先使用AiryLark MCP翻译，自动降级到有道翻译、百度翻译
+
+#### 测试翻译功能
+```bash
+# 测试AiryLark MCP翻译功能
+python test_airylark_mcp_translation.py
+
+# 测试有道翻译功能
+python test_youdao_translation.py
+```
+
 详细使用说明请参考：
+- [AiryLark MCP翻译集成指南](docs/airylark_mcp_translation_guide.md)
+- [有道翻译集成指南](docs/youdao_translation_guide.md)
 - [自定义RSS功能指南](docs/custom_rss_guide.md)
 - [预设RSS源使用指南](docs/preset_rss_feeds_guide.md)
 - [统一界面设计指南](docs/unified_interface_guide.md)

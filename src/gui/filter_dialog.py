@@ -101,6 +101,23 @@ class FilterDialog:
         ttk.Radiobutton(filter_frame, text="综合筛选（推荐）",
                        variable=self.filter_type_var, value="chain").pack(anchor=tk.W)
 
+        # 测试模式设置
+        test_frame = ttk.LabelFrame(main_frame, text="测试模式", padding="10")
+        test_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        # 测试模式变量
+        self.test_mode_var = tk.BooleanVar()
+        
+        test_checkbox = ttk.Checkbutton(test_frame, text="启用测试模式 (使用模拟数据，不调用AI API)",
+                                       variable=self.test_mode_var)
+        test_checkbox.pack(anchor=tk.W)
+        
+        # 测试模式说明
+        test_info_label = ttk.Label(test_frame, 
+                                   text="测试模式下将使用模拟数据进行筛选，不会消耗API配额", 
+                                   foreground="gray", font=("TkDefaultFont", 8))
+        test_info_label.pack(anchor=tk.W, pady=(5, 0))
+
         # 按钮框架
         button_frame = ttk.Frame(main_frame)
         button_frame.pack(fill=tk.X, pady=(20, 0))
@@ -132,10 +149,12 @@ class FilterDialog:
         print("确定按钮被点击")  # 调试信息
         mode = self.filter_mode_var.get()
         filter_type = self.filter_type_var.get()
+        test_mode = self.test_mode_var.get()
 
         self.result = {
             "mode": mode,
-            "filter_type": filter_type
+            "filter_type": filter_type,
+            "test_mode": test_mode
         }
 
         # 如果是单个订阅源筛选模式，需要检查是否有选中的RSS订阅源

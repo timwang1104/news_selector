@@ -388,6 +388,28 @@ class FilterConfigDialog:
             self.config_vars['fallback_enabled'] = tk.BooleanVar()
         ttk.Checkbutton(perf_frame, text="启用降级策略",
                        variable=self.config_vars['fallback_enabled']).pack(anchor=tk.W, padx=5, pady=2)
+        
+        # 测试模式设置
+        test_frame = ttk.Frame(perf_frame)
+        test_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        # 启用测试模式
+        if 'test_mode' not in self.config_vars:
+            self.config_vars['test_mode'] = tk.BooleanVar()
+        ttk.Checkbutton(test_frame, text="启用测试模式 (使用模拟数据，不调用AI API)",
+                       variable=self.config_vars['test_mode']).pack(anchor=tk.W)
+        
+        # 测试模式延迟设置
+        delay_frame = ttk.Frame(test_frame)
+        delay_frame.pack(fill=tk.X, pady=(5, 0))
+        
+        ttk.Label(delay_frame, text="测试模式延迟(秒):").pack(side=tk.LEFT)
+        if 'test_mode_delay' not in self.config_vars:
+            self.config_vars['test_mode_delay'] = tk.DoubleVar()
+        ttk.Spinbox(delay_frame, from_=0.0, to=5.0, increment=0.1,
+                   textvariable=self.config_vars['test_mode_delay'], width=8).pack(side=tk.LEFT, padx=(5, 0))
+        
+        ttk.Label(delay_frame, text="(模拟AI处理时间)", font=("TkDefaultFont", 8)).pack(side=tk.LEFT, padx=(5, 0))
 
     def create_ai_prompt_settings(self, parent):
         """创建AI提示词设置区域"""
@@ -612,6 +634,8 @@ class FilterConfigDialog:
         self.config_vars['batch_max_articles'].set(ai_config.get('batch_max_articles', 30))
         self.config_vars['enable_cache'].set(ai_config.get('enable_cache', True))
         self.config_vars['fallback_enabled'].set(ai_config.get('fallback_enabled', True))
+        self.config_vars['test_mode'].set(ai_config.get('test_mode', False))
+        self.config_vars['test_mode_delay'].set(ai_config.get('test_mode_delay', 0.5))
         self.config_vars['api_key'].set(ai_config.get('api_key', ''))
         self.config_vars['model_name'].set(ai_config.get('model_name', 'gpt-3.5-turbo'))
         self.config_vars['base_url'].set(ai_config.get('base_url', ''))
@@ -703,7 +727,9 @@ class FilterConfigDialog:
                 "cache_size": 1000,
                 "fallback_enabled": self.config_vars['fallback_enabled'].get(),
                 "fallback_threshold": 0.7,
-                "min_confidence": 0.5
+                "min_confidence": 0.5,
+                "test_mode": self.config_vars['test_mode'].get(),
+                "test_mode_delay": self.config_vars['test_mode_delay'].get()
             },
             "chain": {
                 "enable_keyword_filter": self.config_vars['enable_keyword_filter'].get(),

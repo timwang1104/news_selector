@@ -27,6 +27,7 @@ class BatchExportDialog:
         self.parent = parent
         self.dialog = None
         self.export_thread = None
+        self.export_completed = False  # 标记导出是否已完成
 
         # 处理不同类型的输入数据
         if isinstance(data, FilterChainResult):
@@ -411,10 +412,12 @@ class BatchExportDialog:
             success_count = batch_result.get("successful_exports", 0)
             total_count = batch_result.get("total_formats", 0)
             
+            self.export_completed = True  # 标记导出完成
             self.dialog.after(0, lambda: messagebox.showinfo(
                 "完成",
                 f"批量导出完成！\n成功: {success_count}/{total_count} 种格式\n输出目录: {self.output_dir_var.get()}"
             ))
+            self.dialog.after(0, self.close_dialog)  # 自动关闭对话框
             
         except Exception as e:
             self.dialog.after(0, lambda: self.status_var.set(f"批量导出失败: {str(e)}"))
@@ -463,14 +466,22 @@ class BatchExportDialog:
     
     def on_close(self):
         """关闭对话框"""
+        # 如果导出已完成，直接关闭
+        if self.export_completed:
+            self.close_dialog()
+            return
+            
         # 如果正在导出，询问是否取消
         if self.export_thread and self.export_thread.is_alive():
             if messagebox.askyesno("确认", "批量导出正在进行中，确定要取消吗？"):
                 # 这里可以添加取消导出的逻辑
-                pass
+                self.close_dialog()
             else:
                 return
-        
-        # 关闭对话框
+        else:
+            self.close_dialog()
+    
+    def close_dialog(self):
+        """直接关闭对话框"""
         if self.dialog:
             self.dialog.destroy()

@@ -281,3 +281,163 @@ class MCPClient:
             risk_assessment="MCP服务不可用，评估结果可能不准确",
             implementation_suggestions=["等待MCP服务恢复", "进行人工审核"]
         )
+
+
+class GlobalMCPClient:
+    """
+    全局MCP客户端，用于调用各种MCP服务
+    """
+    
+    def __init__(self):
+        self.servers = {}
+        self.default_timeout = 30
+    
+    def register_server(self, name: str, url: str, api_key: str = None):
+        """
+        注册MCP服务器
+        
+        Args:
+            name: 服务器名称
+            url: 服务器URL
+            api_key: API密钥（可选）
+        """
+        self.servers[name] = {
+            "url": url,
+            "api_key": api_key
+        }
+        logger.info(f"已注册MCP服务器: {name}")
+    
+    def call_tool(self, server_name: str, tool_name: str, args: Dict[str, Any]) -> Any:
+        """
+        调用MCP工具
+        
+        Args:
+            server_name: 服务器名称
+            tool_name: 工具名称
+            args: 工具参数
+            
+        Returns:
+            工具执行结果
+        """
+        if server_name not in self.servers:
+            raise ValueError(f"未注册的MCP服务器: {server_name}")
+        
+        server_info = self.servers[server_name]
+        
+        # 如果是本地MCP服务器（如AiryLark），直接调用
+        if server_name == "airylark":
+            return self._call_local_mcp(tool_name, args)
+        
+        # 远程MCP服务器调用
+        return self._call_remote_mcp(server_info, tool_name, args)
+    
+    def _call_local_mcp(self, tool_name: str, args: Dict[str, Any]) -> Any:
+        """
+        调用本地MCP服务（如AiryLark）
+        
+        Args:
+            tool_name: 工具名称
+            args: 工具参数
+            
+        Returns:
+            工具执行结果
+        """
+        # 这里应该调用实际的AiryLark MCP客户端
+        # 由于我们没有具体的实现，这里提供一个模拟
+        
+        if tool_name == "translate":
+            text = args.get("text", "")
+            target_lang = args.get("target_language", "zh")
+            
+            # 模拟翻译结果
+            if target_lang == "zh":
+                return {"translated_text": f"[AiryLark中文翻译] {text}"}
+            elif target_lang == "en":
+                return {"translated_text": f"[AiryLark English Translation] {text}"}
+            else:
+                return {"translated_text": text}
+        
+        raise ValueError(f"不支持的工具: {tool_name}")
+    
+    def _call_remote_mcp(self, server_info: Dict[str, Any], tool_name: str, args: Dict[str, Any]) -> Any:
+        """
+        调用远程MCP服务
+        
+        Args:
+            server_info: 服务器信息
+            tool_name: 工具名称
+            args: 工具参数
+            
+        Returns:
+            工具执行结果
+        """
+        import requests
+        
+        headers = {
+            "Content-Type": "application/json"
+        }
+        
+        if server_info.get("api_key"):
+            headers["Authorization"] = f"Bearer {server_info['api_key']}"
+        
+        payload = {
+            "method": "tools/call",
+            "params": {
+                "name": tool_name,
+                "arguments": args
+            }
+        }
+        
+        response = requests.post(
+            f"{server_info['url']}/mcp",
+            headers=headers,
+            json=payload,
+            timeout=self.default_timeout
+        )
+        
+        if response.status_code != 200:
+            raise Exception(f"MCP服务调用失败: {response.status_code}")
+        
+        return response.json()
+    
+    def is_server_available(self, server_name: str) -> bool:
+        """
+        检查MCP服务器是否可用
+        
+        Args:
+            server_name: 服务器名称
+            
+        Returns:
+            是否可用
+        """
+        return server_name in self.servers
+
+
+# 全局MCP客户端实例
+_global_mcp_client = None
+
+
+def get_global_mcp_client() -> GlobalMCPClient:
+    """
+    获取全局MCP客户端实例
+    
+    Returns:
+        全局MCP客户端实例
+    """
+    global _global_mcp_client
+    if _global_mcp_client is None:
+        _global_mcp_client = GlobalMCPClient()
+        # 注册默认的AiryLark服务器
+        _global_mcp_client.register_server("airylark", "local://airylark")
+    return _global_mcp_client
+
+
+def set_global_mcp_client(client: GlobalMCPClient):
+    """
+    设置全局MCP客户端实例
+    
+    Args:
+        client: MCP客户端实例
+    """
+    global _global_mcp_client
+    _global_mcp_client = client

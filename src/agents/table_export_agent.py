@@ -137,7 +137,7 @@ class TableExportAgent:
             
             # 步骤4: 处理摘要
             chinese_summary = await self._process_summary(
-                fields["summary"], summary_lang
+                fields["summary"], summary_lang, fields["original_title"], fields["content"]
             )
             
             # 步骤5: 提取发布单位
@@ -194,7 +194,12 @@ class TableExportAgent:
             return table_row
             
         except Exception as e:
-            logger.error(f"单篇文章处理失败: {e}")
+            import traceback
+            error_msg = f"单篇文章处理失败: {e}"
+            error_detail = traceback.format_exc()
+            logger.error(f"{error_msg}\n{error_detail}")
+            print(f"DEBUG: {error_msg}")
+            print(f"DEBUG: {error_detail}")
             return {"error": str(e)}
     
     async def _process_titles(self, original_title: str, lang_info: Dict[str, Any]) -> tuple:
@@ -229,28 +234,42 @@ class TableExportAgent:
 
         return chinese_title, english_title
     
-    async def _process_summary(self, original_summary: str, lang_info: Dict[str, Any]) -> str:
+    async def _process_summary(self, original_summary: str, lang_info: Dict[str, Any], title: str = "", content: str = "") -> str:
         """
         处理摘要，生成中文版本
 
         Args:
             original_summary: 原始摘要
             lang_info: 语言检测信息
+            title: 文章标题
+            content: 文章内容
 
         Returns:
             中文摘要
         """
         if not original_summary:
+            # 如果没有摘要但有标题和内容，尝试生成摘要
+            if self.enable_translation and self.translation_service and title and content:
+                return self.translation_service.generate_chinese_summary(title, content)
             return "无摘要"
 
         language = lang_info.get("language", "unknown")
 
-        if language == "chinese":
-            return original_summary
-        elif language == "english" and self.enable_translation and self.translation_service:
-            return self.translation_service.translate_to_chinese(original_summary)
+        if self.enable_translation and self.translation_service:
+            if language == "chinese":
+                # 如果已经是中文摘要，尝试增强质量
+                return self.translation_service.enhance_summary(original_summary, title, content)
+            elif language == "english":
+                # 如果是英文摘要，生成高质量中文摘要
+                return self.translation_service.generate_chinese_summary(title, content, original_summary)
+            else:
+                # 其他语言，尝试翻译
+                return self.translation_service.translate_to_chinese(original_summary)
         else:
-            return f"[原文摘要] {original_summary[:200]}..."
+            if language == "chinese":
+                return original_summary
+            else:
+                return f"[原文摘要] {original_summary[:200]}..."
     
     def _convert_result_to_dict(self, result: CombinedFilterResult) -> Dict[str, Any]:
         """
@@ -281,8 +300,8 @@ class TableExportAgent:
             "published": article.published.isoformat() if article.published else "",
             "feed_title": article.feed_title,
             "author": {
-                "name": article.author.name if article.author else "",
-                "email": article.author.email if article.author else ""
+                "name": article.author.name if hasattr(article.author, 'name') else (article.author if isinstance(article.author, str) else ""),
+                "email": article.author.email if hasattr(article.author, 'email') else ""
             },
             "final_score": result.final_score,
             "ai_reasoning": ai_reasoning,
@@ -297,12 +316,12 @@ class TableExportAgent:
             ]
         }
     
-    def _format_tags(self, tags: List[Dict[str, Any]]) -> str:
+    def _format_tags(self, tags) -> str:
         """
         格式化标签列表
         
         Args:
-            tags: 标签列表
+            tags: 标签列表（可能是Dict或ArticleTag对象）
             
         Returns:
             格式化的标签字符串
@@ -310,7 +329,15 @@ class TableExportAgent:
         if not tags:
             return ""
         
-        tag_names = [tag.get("name", "") for tag in tags]
+        tag_names = []
+        for tag in tags:
+            if isinstance(tag, dict):
+                tag_names.append(tag.get("name", ""))
+            elif hasattr(tag, 'name'):
+                tag_names.append(tag.name)
+            else:
+                tag_names.append(str(tag))
+        
         return ", ".join(filter(None, tag_names))
 
 

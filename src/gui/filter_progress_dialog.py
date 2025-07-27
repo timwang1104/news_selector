@@ -181,11 +181,12 @@ class FilterProgressCallback(CLIProgressCallback):
 class FilterProgressDialog:
     """筛选进度对话框"""
     
-    def __init__(self, parent, articles, filter_type="chain", main_window=None):
+    def __init__(self, parent, articles, filter_type="chain", main_window=None, test_mode=False):
         self.parent = parent
         self.articles = articles
         self.filter_type = filter_type
         self.main_window = main_window  # 添加主窗口引用
+        self.test_mode = test_mode  # 添加测试模式支持
         self.result = None
         self.cancelled = False
         self.completed = False  # 新增：标记筛选是否正常完成
@@ -361,7 +362,8 @@ class FilterProgressDialog:
                 result = filter_service.filter_articles(
                     articles=self.articles,
                     filter_type=self.filter_type,
-                    callback=callback
+                    callback=callback,
+                    test_mode=self.test_mode
                 )
 
                 # 确保在主线程中设置结果

@@ -10,7 +10,7 @@ from datetime import datetime
 from ..filters.base import CombinedFilterResult
 from ..agents.table_export_agent import TableExportAgent
 from ..exporters.table_exporter import TableExporter
-from ..services.translation_service import get_translation_service, set_translation_service, BaiduTranslator
+from ..services.translation_service import get_translation_service, set_translation_service, TranslationService
 
 logger = logging.getLogger(__name__)
 
@@ -26,19 +26,17 @@ class TableExportService:
         
         Args:
             enable_translation: 是否启用翻译功能
-            translation_config: 翻译配置 {"app_id": "xxx", "secret_key": "xxx"}
+            translation_config: 翻译配置 
+                {"provider": "youdao|baidu", "app_id": "xxx", "secret_key": "xxx"}
         """
         self.enable_translation = enable_translation
         
         # 配置翻译服务
-        if enable_translation and translation_config:
-            translator = BaiduTranslator(
-                app_id=translation_config["app_id"],
-                secret_key=translation_config["secret_key"]
-            )
-            from ..services.translation_service import TranslationService
-            set_translation_service(TranslationService(translator))
-            logger.info("已配置百度翻译服务")
+        if enable_translation:
+            # 使用AI大模型翻译服务
+            translation_service = TranslationService()
+            set_translation_service(translation_service)
+            logger.info("已配置AI大模型翻译服务")
         
         # 初始化组件
         self.agent = TableExportAgent(enable_translation=enable_translation)

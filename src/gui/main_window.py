@@ -21,7 +21,7 @@ class MainWindow:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("新闻订阅工具 - News Selector")
-        self.root.geometry("1200x800")
+        self.root.geometry("1600x800")
         
         # 数据
         self.current_articles: List[NewsArticle] = []
@@ -86,6 +86,9 @@ class MainWindow:
         # 文件菜单
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="文件", menu=file_menu)
+        file_menu.add_command(label="导入RSS源", command=self.import_rss_feeds)
+        file_menu.add_command(label="导出RSS源", command=self.export_rss_feeds)
+        file_menu.add_separator()
         file_menu.add_command(label="退出", command=self.root.quit)
         
         # 查看菜单
@@ -99,28 +102,21 @@ class MainWindow:
         view_menu.add_separator()
         view_menu.add_command(label="显示统计", command=self.show_statistics)
 
-        # 筛选菜单
-        filter_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="筛选", menu=filter_menu)
-        filter_menu.add_command(label="智能筛选", command=self.smart_filter_articles)
-        filter_menu.add_command(label="批量筛选", command=self.batch_filter_articles)
-        filter_menu.add_separator()
-        filter_menu.add_command(label="筛选配置", command=self.show_filter_config)
-        filter_menu.add_command(label="性能指标", command=self.show_filter_metrics)
+
 
         # 导出菜单
         export_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="导出", menu=export_menu)
         export_menu.add_command(label="导出表格", command=self.show_table_export_dialog)
-        export_menu.add_command(label="快速导出到Excel", command=self.quick_export_excel)
-        export_menu.add_command(label="快速导出到CSV", command=self.quick_export_csv)
-        export_menu.add_separator()
         export_menu.add_command(label="批量导出", command=self.show_batch_export_dialog)
 
         # 工具菜单
         tools_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="工具", menu=tools_menu)
         tools_menu.add_command(label="RSS管理", command=self.show_rss_manager)
+        tools_menu.add_separator()
+        tools_menu.add_command(label="翻译测试", command=self.show_translation_test_dialog)
+        tools_menu.add_command(label="翻译设置", command=self.show_translation_settings_dialog)
 
         # 帮助菜单
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -201,6 +197,9 @@ class MainWindow:
 
         # 显示所有文章按钮
         ttk.Button(filter_action_frame, text="显示全部", command=self.show_all_articles).pack(side=tk.LEFT, padx=(5, 0))
+        
+        # 翻译按钮
+        ttk.Button(filter_action_frame, text="🌐 翻译", command=self.translate_selected_article).pack(side=tk.LEFT, padx=(5, 0))
 
         # 筛选类型选择（保留用于高级用户）
         ttk.Label(filter_action_frame, text="模式:").pack(side=tk.LEFT, padx=(10, 5))
@@ -1390,19 +1389,22 @@ class MainWindow:
             result = dialog.show()
 
             if result:
+                # 获取测试模式设置
+                test_mode = result.get("test_mode", False)
+                
                 if result["mode"] == "batch":
-                    # 批量筛选模式 - 传递筛选类型
-                    self.batch_filter_articles(result["filter_type"])
+                    # 批量筛选模式 - 传递筛选类型和测试模式
+                    self.batch_filter_articles(result["filter_type"], test_mode)
                 else:
                     # 单个订阅源筛选模式
-                    self.filter_single_subscription(result["subscription"], result["filter_type"])
+                    self.filter_single_subscription(result["subscription"], result["filter_type"], test_mode)
 
         except ImportError:
             messagebox.showerror("错误", "筛选功能模块未找到")
         except Exception as e:
             messagebox.showerror("错误", f"启动筛选失败: {e}")
 
-    def filter_single_subscription(self, subscription, filter_type):
+    def filter_single_subscription(self, subscription, filter_type, test_mode=False):
         """筛选单个订阅源"""
         try:
             # 直接从RSS管理器获取当前选中的RSS订阅源
@@ -1443,7 +1445,7 @@ class MainWindow:
 
                 # 执行筛选
                 self.update_status(f"开始筛选 {rss_feed.title} 的 {len(articles)} 篇文章...")
-                self.quick_filter_with_articles(articles, filter_type)
+                self.quick_filter_with_articles(articles, filter_type, test_mode)
             else:
                 messagebox.showwarning("警告", "请先在RSS管理器中选择要筛选的订阅源")
                 return
@@ -1451,7 +1453,7 @@ class MainWindow:
         except Exception as e:
             messagebox.showerror("错误", f"筛选订阅源失败: {e}")
 
-    def quick_filter_with_articles(self, articles, filter_type):
+    def quick_filter_with_articles(self, articles, filter_type, test_mode=False):
         """使用指定文章列表进行筛选"""
         # 更新筛选类型选择器
         self.filter_type_var.set(filter_type)
@@ -1486,7 +1488,8 @@ class MainWindow:
             self.root,
             articles,
             filter_type,
-            main_window=self
+            main_window=self,
+            test_mode=test_mode
         )
 
         # 获取筛选结果
@@ -1528,7 +1531,7 @@ class MainWindow:
         else:
             self.update_status("筛选失败")
 
-    def batch_filter_articles(self, preset_filter_type=None):
+    def batch_filter_articles(self, preset_filter_type=None, test_mode=False):
         """批量筛选文章"""
         try:
             # 导入批量筛选对话框
@@ -2332,89 +2335,7 @@ AI筛选通过: {result.ai_filtered_count}
             print(f"❌ 创建临时筛选结果失败: {e}")
             return None
 
-    def quick_export_excel(self):
-        """快速导出到Excel"""
-        self._quick_export("xlsx")
 
-    def quick_export_csv(self):
-        """快速导出到CSV"""
-        self._quick_export("csv")
-
-    def _quick_export(self, format_type: str):
-        """快速导出的通用方法"""
-        try:
-            # 获取当前显示的文章
-            articles = self.get_current_articles()
-            if not articles:
-                msg = "没有可导出的文章。\n\n请先执行以下操作之一：\n"
-                msg += "1. 使用RSS管理功能加载文章\n"
-                msg += "2. 执行智能筛选获取筛选结果\n"
-                msg += "3. 从订阅源加载新闻文章"
-                messagebox.showwarning("提示", msg)
-                return
-
-            # 选择保存路径
-            from tkinter import filedialog
-            from datetime import datetime
-
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            if format_type == "xlsx":
-                filename = f"news_export_{timestamp}.xlsx"
-                filetypes = [("Excel文件", "*.xlsx"), ("所有文件", "*.*")]
-            else:
-                filename = f"news_export_{timestamp}.csv"
-                filetypes = [("CSV文件", "*.csv"), ("所有文件", "*.*")]
-
-            filepath = filedialog.asksaveasfilename(
-                defaultextension=f".{format_type}",
-                filetypes=filetypes,
-                initialvalue=filename
-            )
-
-            if not filepath:
-                return
-
-            # 执行导出
-            self.update_status("正在导出...")
-            self.root.update_idletasks()
-
-            # 使用新的MCP表格导出功能
-            # filter_service 已经在文件顶部导入了
-
-            # 使用现有的筛选结果，如果没有则执行筛选
-            if hasattr(self, 'filter_result') and self.filter_result:
-                filter_result = self.filter_result
-                print(f"📋 使用现有筛选结果: {len(filter_result.selected_articles)} 篇文章")
-            else:
-                self.update_status("正在筛选文章...")
-                filter_result = filter_service.filter_articles(
-                    articles=articles,
-                    filter_type="keyword"  # 使用关键词筛选避免AI调用
-                )
-                self.filter_result = filter_result
-                print(f"📋 新筛选结果: {len(filter_result.selected_articles)} 篇文章")
-
-            # 执行表格导出
-            self.update_status("正在生成表格...")
-            export_result = filter_service.export_results_to_table(
-                result=filter_result,
-                output_format=format_type,
-                output_path=filepath,
-                enable_translation=False  # 默认禁用翻译以提高速度
-            )
-
-            if export_result.get("success", False):
-                exported_count = export_result.get("exported_count", 0)
-                messagebox.showinfo("成功", f"导出完成！\n文件: {filepath}\n导出数量: {exported_count} 篇文章")
-                self.update_status("导出完成")
-            else:
-                error_msg = export_result.get("message", "未知错误")
-                messagebox.showerror("错误", f"导出失败: {error_msg}")
-                self.update_status("导出失败")
-
-        except Exception as e:
-            messagebox.showerror("错误", f"导出失败: {str(e)}")
-            self.update_status("导出失败")
 
     def show_batch_export_dialog(self):
         """显示批量导出对话框"""
@@ -2504,6 +2425,369 @@ AI筛选通过: {result.ai_filtered_count}
                 articles.append(self.current_articles[i])
 
         return articles
+
+    def import_rss_feeds(self):
+        """导入RSS源"""
+        try:
+            from tkinter import filedialog
+            import json
+            
+            # 选择导入文件
+            filepath = filedialog.askopenfilename(
+                title="选择RSS源文件",
+                filetypes=[
+                    ("JSON文件", "*.json"),
+                    ("所有文件", "*.*")
+                ]
+            )
+            
+            if not filepath:
+                return
+            
+            # 读取文件
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # 验证文件格式
+            if not isinstance(data, dict) or 'feeds' not in data:
+                messagebox.showerror("错误", "无效的RSS源文件格式")
+                return
+            
+            feeds_data = data['feeds']
+            if not isinstance(feeds_data, list):
+                messagebox.showerror("错误", "无效的RSS源数据格式")
+                return
+            
+            # 获取RSS管理器
+            if not hasattr(self, 'rss_manager'):
+                messagebox.showerror("错误", "RSS管理器未初始化")
+                return
+            
+            # 导入RSS源
+            success_count = 0
+            error_count = 0
+            duplicate_count = 0
+            
+            for feed_data in feeds_data:
+                try:
+                    # 检查必要字段
+                    if 'url' not in feed_data or 'title' not in feed_data:
+                        error_count += 1
+                        continue
+                    
+                    url = feed_data['url']
+                    category = feed_data.get('category', '默认')
+                    
+                    # 尝试添加订阅
+                    success, message = self.rss_manager.custom_rss_service.add_subscription(url, category)
+                    
+                    if success:
+                        success_count += 1
+                    elif "已存在" in message:
+                        duplicate_count += 1
+                    else:
+                        error_count += 1
+                        
+                except Exception as e:
+                    print(f"导入RSS源失败: {e}")
+                    error_count += 1
+            
+            # 刷新RSS源列表
+            if hasattr(self.rss_manager, 'refresh_rss_feed_list'):
+                self.rss_manager.refresh_rss_feed_list()
+            
+            # 显示结果
+            result_msg = f"导入完成！\n\n"
+            result_msg += f"成功导入: {success_count} 个RSS源\n"
+            result_msg += f"重复跳过: {duplicate_count} 个RSS源\n"
+            result_msg += f"导入失败: {error_count} 个RSS源"
+            
+            messagebox.showinfo("导入结果", result_msg)
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"导入RSS源失败: {str(e)}")
+    
+    def export_rss_feeds(self):
+        """导出RSS源"""
+        try:
+            from tkinter import filedialog
+            from datetime import datetime
+            import json
+            
+            # 获取RSS管理器
+            if not hasattr(self, 'rss_manager'):
+                messagebox.showerror("错误", "RSS管理器未初始化")
+                return
+            
+            # 获取所有RSS源
+            feeds = self.rss_manager.custom_rss_service.get_all_subscriptions()
+            
+            if not feeds:
+                messagebox.showinfo("提示", "没有可导出的RSS源")
+                return
+            
+            # 选择保存路径
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"rss_feeds_{timestamp}.json"
+            
+            filepath = filedialog.asksaveasfilename(
+                title="保存RSS源文件",
+                defaultextension=".json",
+                filetypes=[
+                    ("JSON文件", "*.json"),
+                    ("所有文件", "*.*")
+                ],
+                initialvalue=filename
+            )
+            
+            if not filepath:
+                return
+            
+            # 准备导出数据
+            export_data = {
+                'exported_at': datetime.now().isoformat(),
+                'version': '1.0',
+                'total_feeds': len(feeds),
+                'feeds': [feed.to_dict() for feed in feeds]
+            }
+            
+            # 写入文件
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(export_data, f, ensure_ascii=False, indent=2)
+            
+            messagebox.showinfo("成功", f"导出完成！\n\n文件: {filepath}\n导出数量: {len(feeds)} 个RSS源")
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"导出RSS源失败: {str(e)}")
+
+    def show_translation_test_dialog(self):
+        """显示翻译测试对话框"""
+        try:
+            from .dialogs.translation_test_dialog import TranslationTestDialog
+            dialog = TranslationTestDialog(self.root)
+            dialog.show()
+        except ImportError:
+            # 如果没有专门的翻译测试对话框，使用简单的测试
+            self._simple_translation_test()
+        except Exception as e:
+            messagebox.showerror("错误", f"打开翻译测试对话框失败: {str(e)}")
+    
+    def show_translation_settings_dialog(self):
+        """显示翻译设置对话框"""
+        try:
+            from .dialogs.translation_settings_dialog import TranslationSettingsDialog
+            dialog = TranslationSettingsDialog(self.root)
+            dialog.show()
+        except ImportError:
+            # 如果没有专门的翻译设置对话框，显示简单信息
+            self._show_translation_info()
+        except Exception as e:
+            messagebox.showerror("错误", f"打开翻译设置对话框失败: {str(e)}")
+    
+    def translate_selected_article(self):
+        """翻译选中的文章"""
+        try:
+            # 获取选中的文章
+            selected_items = self.article_tree.selection()
+            if not selected_items:
+                messagebox.showwarning("提示", "请先选择要翻译的文章")
+                return
+            
+            # 获取文章索引
+            item = selected_items[0]
+            item_index = self.article_tree.index(item)
+            
+            # 获取对应的文章对象
+            current_articles = self.get_current_articles()
+            if item_index >= len(current_articles):
+                messagebox.showerror("错误", "无法获取文章信息")
+                return
+            
+            article = current_articles[item_index]
+            
+            # 执行翻译
+            self._translate_article_content(article)
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"翻译文章失败: {str(e)}")
+    
+    def _simple_translation_test(self):
+        """简单的翻译测试"""
+        try:
+            from ..services.translation_service import get_translation_service
+            
+            # 创建测试窗口
+            test_window = tk.Toplevel(self.root)
+            test_window.title("翻译测试")
+            test_window.geometry("600x400")
+            test_window.transient(self.root)
+            test_window.grab_set()
+            
+            # 输入区域
+            input_frame = ttk.LabelFrame(test_window, text="输入文本", padding="10")
+            input_frame.pack(fill=tk.X, padx=10, pady=5)
+            
+            input_text = tk.Text(input_frame, height=4, wrap=tk.WORD)
+            input_text.pack(fill=tk.X)
+            input_text.insert(tk.END, "Hello, this is a test for translation service.")
+            
+            # 按钮区域
+            button_frame = ttk.Frame(test_window)
+            button_frame.pack(fill=tk.X, padx=10, pady=5)
+            
+            def translate_to_chinese():
+                text = input_text.get("1.0", tk.END).strip()
+                if text:
+                    service = get_translation_service()
+                    result = service.translate_to_chinese(text)
+                    result_text.delete("1.0", tk.END)
+                    result_text.insert(tk.END, result)
+            
+            def translate_to_english():
+                text = input_text.get("1.0", tk.END).strip()
+                if text:
+                    service = get_translation_service()
+                    result = service.translate_to_english(text)
+                    result_text.delete("1.0", tk.END)
+                    result_text.insert(tk.END, result)
+            
+            ttk.Button(button_frame, text="翻译为中文", command=translate_to_chinese).pack(side=tk.LEFT, padx=(0, 5))
+            ttk.Button(button_frame, text="翻译为英文", command=translate_to_english).pack(side=tk.LEFT, padx=(5, 0))
+            
+            # 结果区域
+            result_frame = ttk.LabelFrame(test_window, text="翻译结果", padding="10")
+            result_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+            
+            result_text = tk.Text(result_frame, height=6, wrap=tk.WORD, state=tk.NORMAL)
+            result_text.pack(fill=tk.BOTH, expand=True)
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"翻译测试失败: {str(e)}")
+    
+    def _show_translation_info(self):
+        """显示翻译信息"""
+        try:
+            from ..services.translation_service import get_translation_service
+            
+            service = get_translation_service()
+            translator_type = type(service.translator).__name__
+            
+            info_msg = f"当前翻译服务信息:\n\n"
+            info_msg += f"翻译器类型: {translator_type}\n"
+            info_msg += f"支持语言: 中文 ⇄ 英文\n\n"
+            
+            if "DeepTranslator" in translator_type:
+                info_msg += "✅ 使用 AI大模型翻译服务\n"
+                info_msg += "• 免费使用，无需API密钥\n"
+                info_msg += "• 支持多种翻译引擎\n"
+                info_msg += "• 自动缓存翻译结果\n"
+            elif "Mock" in translator_type:
+                info_msg += "⚠️ 使用模拟翻译器\n"
+                info_msg += "• 仅用于测试和降级\n"
+                info_msg += "• 不提供真实翻译功能\n"
+            
+            info_msg += "\n使用方法:\n"
+            info_msg += "1. 在文章列表中选择文章，点击'🌐 翻译'按钮\n"
+            info_msg += "2. 在导出对话框中启用翻译功能\n"
+            info_msg += "3. 使用'翻译测试'功能测试翻译服务"
+            
+            messagebox.showinfo("翻译服务信息", info_msg)
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"获取翻译信息失败: {str(e)}")
+    
+    def _translate_article_content(self, article):
+        """翻译文章内容"""
+        try:
+            from ..services.translation_service import get_translation_service
+            
+            # 创建翻译结果窗口
+            result_window = tk.Toplevel(self.root)
+            result_window.title(f"翻译结果 - {article.title[:50]}...")
+            result_window.geometry("800x600")
+            result_window.transient(self.root)
+            
+            # 创建笔记本控件
+            notebook = ttk.Notebook(result_window)
+            notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+            
+            # 标题翻译标签页
+            title_frame = ttk.Frame(notebook)
+            notebook.add(title_frame, text="标题翻译")
+            
+            # 原标题
+            ttk.Label(title_frame, text="原标题:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(10, 5))
+            original_title = tk.Text(title_frame, height=3, wrap=tk.WORD)
+            original_title.pack(fill=tk.X, padx=10, pady=(0, 10))
+            original_title.insert(tk.END, article.title)
+            original_title.config(state=tk.DISABLED)
+            
+            # 翻译标题
+            ttk.Label(title_frame, text="翻译标题:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(10, 5))
+            translated_title = tk.Text(title_frame, height=3, wrap=tk.WORD)
+            translated_title.pack(fill=tk.X, padx=10, pady=(0, 10))
+            
+            # 摘要翻译标签页
+            summary_frame = ttk.Frame(notebook)
+            notebook.add(summary_frame, text="摘要翻译")
+            
+            # 原摘要
+            ttk.Label(summary_frame, text="原摘要:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(10, 5))
+            original_summary = tk.Text(summary_frame, height=6, wrap=tk.WORD)
+            original_summary.pack(fill=tk.X, padx=10, pady=(0, 10))
+            original_summary.insert(tk.END, getattr(article, 'summary', '无摘要'))
+            original_summary.config(state=tk.DISABLED)
+            
+            # 翻译摘要
+            ttk.Label(summary_frame, text="翻译摘要:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(10, 5))
+            translated_summary = tk.Text(summary_frame, height=6, wrap=tk.WORD)
+            translated_summary.pack(fill=tk.X, padx=10, pady=(0, 10))
+            
+            # 执行翻译
+            def do_translation():
+                try:
+                    service = get_translation_service()
+                    
+                    # 翻译标题
+                    title_result = service.detect_and_translate(article.title, "zh" if self._is_english(article.title) else "en")
+                    translated_title.delete("1.0", tk.END)
+                    translated_title.insert(tk.END, title_result.get("translated", "翻译失败"))
+                    
+                    # 翻译摘要
+                    if hasattr(article, 'summary') and article.summary:
+                        summary_result = service.detect_and_translate(article.summary, "zh" if self._is_english(article.summary) else "en")
+                        translated_summary.delete("1.0", tk.END)
+                        translated_summary.insert(tk.END, summary_result.get("translated", "翻译失败"))
+                    else:
+                        translated_summary.delete("1.0", tk.END)
+                        translated_summary.insert(tk.END, "无摘要内容")
+                    
+                    messagebox.showinfo("完成", "翻译完成！")
+                    
+                except Exception as e:
+                    messagebox.showerror("错误", f"翻译失败: {str(e)}")
+            
+            # 按钮区域
+            button_frame = ttk.Frame(result_window)
+            button_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+            
+            ttk.Button(button_frame, text="开始翻译", command=do_translation).pack(side=tk.LEFT)
+            ttk.Button(button_frame, text="关闭", command=result_window.destroy).pack(side=tk.RIGHT)
+            
+            # 自动执行翻译
+            result_window.after(500, do_translation)
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"创建翻译窗口失败: {str(e)}")
+    
+    def _is_english(self, text):
+        """简单判断文本是否为英文"""
+        if not text:
+            return False
+        # 统计英文字符比例
+        english_chars = sum(1 for c in text if c.isascii() and c.isalpha())
+        total_chars = sum(1 for c in text if c.isalpha())
+        return total_chars > 0 and english_chars / total_chars > 0.5
 
     def run(self):
         """运行主循环"""

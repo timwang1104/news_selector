@@ -18,6 +18,9 @@ rich>=13.0.0  # 美化命令行输出
 volcengine-python-sdk>=1.1.0  # 火山引擎豆包大模型SDK
 httpx>=0.24.0  # 火山引擎SDK依赖
 
+# 翻译服务依赖
+# deep-translator>=1.11.0  # 已替换为AI大模型翻译
+
 # GUI依赖 (tkinter是Python内置的，无需额外安装)
 # 如果在某些Linux发行版上tkinter不可用，可能需要安装:
 # Ubuntu/Debian: sudo apt-get install python3-tk

@@ -50,6 +50,10 @@ class AIFilterConfig:
     fallback_enabled: bool = True
     fallback_threshold: float = 0.7  # 关键词筛选分数作为降级
     min_confidence: float = 0.5     # 最小置信度
+    
+    # 测试模式配置
+    test_mode: bool = False         # 启用测试模式（使用模拟数据，不调用AI API）
+    test_mode_delay: float = 0.5    # 测试模式模拟延迟（秒）
 
 
 @dataclass

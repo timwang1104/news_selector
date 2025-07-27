@@ -151,7 +151,7 @@ class FilterChain:
         else:
             self.tag_analyzer = None
     
-    def process(self, articles: List[NewsArticle]) -> FilterChainResult:
+    def process(self, articles: List[NewsArticle], test_mode: bool = False) -> FilterChainResult:
         """执行完整的筛选流程"""
         start_time = datetime.now()
         result = FilterChainResult(
@@ -171,7 +171,7 @@ class FilterChain:
             print(f"🔍 综合筛选检查: enable_ai_filter={self.config.enable_ai_filter}, keyword_results={len(keyword_results)}")
             if self.config.enable_ai_filter and keyword_results:
                 print(f"🤖 开始执行AI筛选: {len(keyword_results)} 篇关键词筛选结果")
-                ai_results = self._execute_ai_filter(keyword_results, result)
+                ai_results = self._execute_ai_filter(keyword_results, result, test_mode)
                 print(f"✅ AI筛选完成: {len(ai_results)} 篇文章通过")
                 logger.info(f"AI filter completed: {len(ai_results)} articles passed")
             elif not self.config.enable_ai_filter:
@@ -198,7 +198,7 @@ class FilterChain:
         return result
     
     def process_with_callback(self, articles: List[NewsArticle], 
-                            callback: FilterProgressCallback) -> FilterChainResult:
+                            callback: FilterProgressCallback, test_mode: bool = False) -> FilterChainResult:
         """带进度回调的筛选流程"""
         callback.on_start(len(articles))
         
@@ -221,7 +221,7 @@ class FilterChain:
             ai_results = []
             if self.config.enable_ai_filter and keyword_results:
                 ai_results = self._execute_ai_filter_with_callback(
-                    keyword_results, result, callback
+                    keyword_results, result, callback, test_mode
                 )
                 callback.on_ai_complete(len(ai_results))
             
@@ -277,7 +277,7 @@ class FilterChain:
             return []
     
     def _execute_ai_filter(self, keyword_results: List[KeywordFilterResult],
-                         result: FilterChainResult) -> List[AIFilterResult]:
+                         result: FilterChainResult, test_mode: bool = False) -> List[AIFilterResult]:
         """执行AI筛选"""
         start_time = time.time()
         try:
@@ -297,7 +297,13 @@ class FilterChain:
                     f"AI筛选数量限制，仅处理前{self.config.max_ai_requests}篇文章"
                 )
             
-            ai_results = self.ai_filter.filter(articles)
+            if test_mode:
+                # 测试模式：生成模拟AI筛选结果
+                print(f"🧪 测试模式：生成模拟AI筛选结果")
+                ai_results = self._generate_mock_ai_results(articles)
+            else:
+                # 正常模式：调用真实AI API
+                ai_results = self.ai_filter.filter(articles)
 
             # AI筛选器已经按评分排序并返回前N条结果，无需再次过滤
             result.ai_filtered_count = len(ai_results)
@@ -343,7 +349,7 @@ class FilterChain:
     
     def _execute_ai_filter_with_callback(self, keyword_results: List[KeywordFilterResult],
                                        result: FilterChainResult,
-                                       callback: FilterProgressCallback) -> List[AIFilterResult]:
+                                       callback: FilterProgressCallback, test_mode: bool = False) -> List[AIFilterResult]:
         """带回调的AI筛选"""
         articles = [kr.article for kr in keyword_results]
         
@@ -361,17 +367,26 @@ class FilterChain:
 
         # 收集所有AI评估结果
         all_results = []
-        for i in range(0, len(articles), batch_size):
-            batch = articles[i:i + batch_size]
-            batch_results = []
+        if test_mode:
+            # 测试模式：生成模拟结果
+            print(f"🧪 测试模式：生成模拟AI筛选结果")
+            all_results = self._generate_mock_ai_results(articles)
+            # 模拟进度更新
+            for i in range(0, len(articles), batch_size):
+                callback.on_ai_progress(min(i + batch_size, len(articles)), len(articles))
+        else:
+            # 正常模式：调用真实AI API
+            for i in range(0, len(articles), batch_size):
+                batch = articles[i:i + batch_size]
+                batch_results = []
 
-            for article in batch:
-                single_result = self.ai_filter.filter_single(article)
-                if single_result:
-                    batch_results.append(single_result)
+                for article in batch:
+                    single_result = self.ai_filter.filter_single(article)
+                    if single_result:
+                        batch_results.append(single_result)
 
-            all_results.extend(batch_results)
-            callback.on_ai_progress(min(i + batch_size, len(articles)), len(articles))
+                all_results.extend(batch_results)
+                callback.on_ai_progress(min(i + batch_size, len(articles)), len(articles))
 
         # 按评分排序并取前N条
         all_results.sort(key=lambda x: x.evaluation.total_score, reverse=True)
@@ -427,6 +442,42 @@ class FilterChain:
             combined_results = self._apply_balanced_selection(combined_results)
 
         return combined_results
+
+    def _generate_mock_ai_results(self, articles: List[NewsArticle]) -> List[AIFilterResult]:
+        """生成模拟的AI筛选结果（测试模式）"""
+        import random
+        from ..models.ai_filter_result import AIFilterResult, AIEvaluation
+        
+        mock_results = []
+        for i, article in enumerate(articles):
+            # 生成随机评分（15-30分）
+            score = random.randint(15, 30)
+            
+            # 创建模拟评估结果
+            evaluation = AIEvaluation(
+                relevance_score=random.randint(3, 10),
+                importance_score=random.randint(3, 10), 
+                quality_score=random.randint(3, 10),
+                total_score=score,
+                reasoning=f"模拟AI评估：这是一篇关于{article.title[:20]}的文章，评分为{score}分"
+            )
+            
+            # 创建AI筛选结果
+            ai_result = AIFilterResult(
+                article=article,
+                evaluation=evaluation,
+                processing_time=random.uniform(0.1, 0.5),  # 模拟处理时间
+                selected=score >= 20  # 20分以上被选中
+            )
+            
+            mock_results.append(ai_result)
+        
+        # 按评分排序
+        mock_results.sort(key=lambda x: x.evaluation.total_score, reverse=True)
+        
+        # 限制结果数量
+        max_selected = getattr(self.ai_filter.config, 'max_selected', 3)
+        return mock_results[:max_selected]
 
     def _generate_combined_tags(self, keyword_result: KeywordFilterResult,
                                ai_result: Optional[AIFilterResult]) -> List:

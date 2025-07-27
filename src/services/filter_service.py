@@ -68,7 +68,8 @@ class FilterService:
     
     def filter_articles(self, articles: List[NewsArticle], 
                        filter_type: str = "chain",
-                       callback: Optional[FilterProgressCallback] = None) -> FilterChainResult:
+                       callback: Optional[FilterProgressCallback] = None,
+                       test_mode: bool = False) -> FilterChainResult:
         """
         筛选文章
         
@@ -76,6 +77,7 @@ class FilterService:
             articles: 待筛选的文章列表
             filter_type: 筛选类型 ("keyword", "ai", "chain")
             callback: 进度回调函数
+            test_mode: 测试模式，使用模拟数据而不调用AI API
         
         Returns:
             筛选结果
@@ -90,16 +92,16 @@ class FilterService:
         try:
             if filter_type == "keyword":
                 print(f"📝 执行关键词筛选")
-                return self._keyword_only_filter(articles, callback)
+                return self._keyword_only_filter(articles, callback, test_mode)
             elif filter_type == "ai":
                 print(f"🤖 执行AI筛选")
-                return self._ai_only_filter(articles, callback)
+                return self._ai_only_filter(articles, callback, test_mode)
             elif filter_type == "chain":
                 print(f"🔗 执行综合筛选 (关键词+AI)")
                 if callback:
-                    return self.filter_chain.process_with_callback(articles, callback)
+                    return self.filter_chain.process_with_callback(articles, callback, test_mode)
                 else:
-                    return self.filter_chain.process(articles)
+                    return self.filter_chain.process(articles, test_mode)
             else:
                 raise ValueError(f"Unknown filter type: {filter_type}")
                 
@@ -108,7 +110,8 @@ class FilterService:
             raise
     
     def _keyword_only_filter(self, articles: List[NewsArticle],
-                           callback: Optional[FilterProgressCallback] = None) -> FilterChainResult:
+                           callback: Optional[FilterProgressCallback] = None,
+                           test_mode: bool = False) -> FilterChainResult:
         """仅关键词筛选"""
         from datetime import datetime
 
@@ -180,7 +183,8 @@ class FilterService:
         return result
     
     def _ai_only_filter(self, articles: List[NewsArticle],
-                      callback: Optional[FilterProgressCallback] = None) -> FilterChainResult:
+                      callback: Optional[FilterProgressCallback] = None,
+                      test_mode: bool = False) -> FilterChainResult:
         """仅AI筛选"""
         from datetime import datetime
 
@@ -222,7 +226,13 @@ class FilterService:
                         callback.on_ai_article_start(article.title, article_index, len(articles))
 
                     try:
-                        single_result = self.ai_filter.filter_single(article)
+                        if test_mode:
+                            # 测试模式：生成模拟结果
+                            single_result = self._generate_mock_ai_single_result(article)
+                        else:
+                            # 正常模式：调用真实AI API
+                            single_result = self.ai_filter.filter_single(article)
+                            
                         if single_result:
                             batch_results.append(single_result)
                             batch_scores.append(single_result.evaluation.total_score)
@@ -308,6 +318,33 @@ class FilterService:
             ).total_seconds()
         
         return result
+    
+    def _generate_mock_ai_single_result(self, article):
+        """生成单个模拟AI筛选结果（测试模式）"""
+        import random
+        from ..models.ai_filter_result import AIFilterResult, AIEvaluation
+        
+        # 生成随机评分（15-30分）
+        score = random.randint(15, 30)
+        
+        # 创建模拟评估结果
+        evaluation = AIEvaluation(
+            relevance_score=random.randint(3, 10),
+            importance_score=random.randint(3, 10), 
+            quality_score=random.randint(3, 10),
+            total_score=score,
+            reasoning=f"模拟AI评估：这是一篇关于{article.title[:20]}的文章，评分为{score}分"
+        )
+        
+        # 创建AI筛选结果
+        ai_result = AIFilterResult(
+            article=article,
+            evaluation=evaluation,
+            processing_time=random.uniform(0.1, 0.5),  # 模拟处理时间
+            selected=score >= 20  # 20分以上被选中
+        )
+        
+        return ai_result
     
     def update_config(self, config_type: str, **kwargs):
         """更新筛选配置"""
