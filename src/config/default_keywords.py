@@ -2,6 +2,54 @@
 默认关键词配置
 """
 
+# 添加中国相关黑名单关键词配置
+
+# 中国黑名单关键词（包含国家、地区、大学、政府机构和公司）
+CHINA_BLACKLIST = [
+    # 国家和地区
+    "中国", "China", "Chinese", "PRC", "People's Republic of China",
+    "中华人民共和国", "中华", "mainland China", "中国大陆",
+    "北京", "Beijing", "上海", "Shanghai", "广州", "Guangzhou", "深圳", "Shenzhen",
+    
+    # 中国大学和研究机构
+    "清华大学", "Tsinghua University", "北京大学", "Peking University", 
+    "中国科学院", "Chinese Academy of Sciences", "CAS", "中科院",
+    "复旦大学", "Fudan University", "浙江大学", "Zhejiang University",
+    "上海交通大学", "Shanghai Jiao Tong University", "中国人民大学", "Renmin University",
+    "南京大学", "Nanjing University", "武汉大学", "Wuhan University",
+    "中国科学技术大学", "University of Science and Technology of China", "USTC",
+    
+    # 政府机构
+    "中共", "CCP", "Chinese Communist Party", "中国共产党",
+    "国务院", "State Council", "中央政府", "Central Government",
+    "科技部", "Ministry of Science and Technology", "工信部", "MIIT",
+    "教育部", "Ministry of Education", "外交部", "Ministry of Foreign Affairs",
+    
+    # 科技公司
+    "华为", "Huawei", "中兴", "ZTE", "小米", "Xiaomi", "OPPO", "vivo", "联想", "Lenovo",
+    "阿里巴巴", "Alibaba", "腾讯", "Tencent", "百度", "Baidu", "京东", "JD.com", "字节跳动", "ByteDance",
+    "滴滴", "DiDi", "美团", "Meituan", "网易", "NetEase", "哔哩哔哩", "Bilibili", "快手", "Kuaishou",
+    "商汤", "SenseTime", "旷视", "Megvii", "依图", "Yitu", "云从", "CloudWalk",
+    
+    # 半导体公司
+    "中芯国际", "SMIC", "长江存储", "YMTC", "紫光", "Unisoc", "华虹", "Huahong",
+    
+    # 通信公司
+    "中国移动", "China Mobile", "中国电信", "China Telecom", "中国联通", "China Unicom",
+    
+    # 能源公司
+    "中石油", "PetroChina", "中石化", "Sinopec", "中海油", "CNOOC",
+    
+    # 金融公司
+    "中国银行", "Bank of China", "工商银行", "ICBC", "建设银行", "CCB",
+    "农业银行", "ABC", "中信", "CITIC", "平安", "Ping An",
+    
+    # 制造业公司
+    "比亚迪", "BYD", "吉利", "Geely", "长城", "Great Wall Motors",
+    "宁德时代", "CATL", "中国中车", "CRRC"
+]
+
+
 # 国际科技政策关键词库
 INTERNATIONAL_TECH_KEYWORDS = {
     "artificial_intelligence": {
@@ -157,5 +205,17 @@ INTERNATIONAL_TECH_KEYWORDS = {
             "中科院", "清华大学", "北京大学", "科技部", "工信部"
         ],
         "weight": 0.6
+    },
+    "nuclear_fusion": {
+        "keywords": [
+            "nuclear fusion", "fusion energy", "fusion power", "fusion reactor", 
+            "tokamak", "stellarator", "inertial confinement fusion", "magnetic confinement",
+            "ITER", "JET", "NIF", "plasma physics", "fusion breakthrough", 
+            "fusion ignition", "deuterium", "tritium", "helium-3", "fusion fuel",
+            "核聚变", "聚变能源", "聚变反应堆", "托卡马克", "星状器", 
+            "惯性约束聚变", "磁约束聚变", "等离子体物理", "聚变突破", 
+            "聚变点火", "氘", "氚", "氦-3", "聚变燃料"
+        ],
+        "weight": 0.9
     }
 }

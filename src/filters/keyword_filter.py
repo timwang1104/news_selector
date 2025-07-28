@@ -9,6 +9,7 @@ from ..models.news import NewsArticle
 from ..config.filter_config import KeywordConfig
 from .base import BaseFilter, KeywordMatch, KeywordFilterResult, FilterMetrics
 from ..config.keyword_config import keyword_config_manager
+from ..config.default_keywords import CHINA_BLACKLIST
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ class KeywordMatcher:
     def __init__(self, config: KeywordConfig):
         self.config = config
         self.keyword_patterns = self._compile_patterns()
+        self.blacklist_pattern = self._compile_blacklist_pattern()
     
     def _compile_patterns(self) -> Dict[str, re.Pattern]:
         """预编译关键词正则表达式"""
@@ -44,6 +46,30 @@ class KeywordMatcher:
             patterns[category] = re.compile(pattern, flags)
         
         return patterns
+    
+    def _compile_blacklist_pattern(self) -> re.Pattern:
+        """预编译黑名单关键词正则表达式"""
+        if not CHINA_BLACKLIST:
+            return None
+            
+        # 构建正则表达式
+        escaped_keywords = [re.escape(keyword) for keyword in CHINA_BLACKLIST]
+        
+        if self.config.word_boundary:
+            # 使用单词边界
+            pattern = r'\b(?:' + '|'.join(escaped_keywords) + r')\b'
+        else:
+            pattern = '|'.join(escaped_keywords)
+        
+        flags = re.IGNORECASE if not self.config.case_sensitive else 0
+        return re.compile(pattern, flags)
+    
+    def check_blacklist(self, text: str) -> bool:
+        """检查文本是否包含黑名单关键词"""
+        if not text or not self.blacklist_pattern:
+            return False
+        
+        return bool(self.blacklist_pattern.search(text))
     
     def find_matches(self, text: str) -> List[KeywordMatch]:
         """在文本中查找关键词匹配"""
@@ -200,6 +226,12 @@ class KeywordFilter(BaseFilter):
         results = []
         
         for article in articles:
+            # 首先检查是否包含黑名单关键词
+            text_content = self._prepare_text(article)
+            if self.matcher.check_blacklist(text_content):
+                # 如果包含黑名单关键词，直接跳过
+                continue
+                
             result = self.filter_single(article)
             if result and result.relevance_score >= self.config.threshold:
                 results.append(result)
@@ -220,6 +252,10 @@ class KeywordFilter(BaseFilter):
         try:
             # 准备文本内容
             text_content = self._prepare_text(article)
+            
+            # 检查是否包含黑名单关键词
+            if self.matcher.check_blacklist(text_content):
+                return None
             
             # 查找关键词匹配
             matches = self.matcher.find_matches(text_content)

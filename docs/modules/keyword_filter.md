@@ -9,6 +9,7 @@
 - 计算文章相关性评分
 - 支持多维度关键词分类
 - 提供筛选结果统计
+- **完全过滤中国公司相关新闻**（新增功能）
 
 ## 接口设计
 
@@ -68,6 +69,8 @@ class KeywordConfig:
 class KeywordMatcher:
     def __init__(self, fuzzy_threshold: float = 0.8):
         self.fuzzy_threshold = fuzzy_threshold
+        # 初始化黑名单模式（新增）
+        self.blacklist_pattern = self._compile_blacklist_pattern()
     
     def find_matches(self, text: str, keywords: List[str]) -> List[KeywordMatch]:
         """在文本中查找关键词匹配"""
@@ -89,6 +92,30 @@ class KeywordMatcher:
             matches.extend(fuzzy_matches)
         
         return matches
+        
+    def _compile_blacklist_pattern(self) -> re.Pattern:
+        """预编译黑名单关键词正则表达式（新增）"""
+        if not CHINA_BLACKLIST:
+            return None
+            
+        # 构建正则表达式
+        escaped_keywords = [re.escape(keyword) for keyword in CHINA_BLACKLIST]
+        
+        if self.config.word_boundary:
+            # 使用单词边界
+            pattern = r'\b(?:' + '|'.join(escaped_keywords) + r')\b'
+        else:
+            pattern = '|'.join(escaped_keywords)
+        
+        flags = re.IGNORECASE if not self.config.case_sensitive else 0
+        return re.compile(pattern, flags)
+    
+    def check_blacklist(self, text: str) -> bool:
+        """检查文本是否包含黑名单关键词（新增）"""
+        if not text or not self.blacklist_pattern:
+            return False
+        
+        return bool(self.blacklist_pattern.search(text))
 ```
 
 ### 2. 相关性评分算法
@@ -96,8 +123,159 @@ class KeywordMatcher:
 ```python
 def calculate_relevance_score(self, matches: List[KeywordMatch], 
                             article: Article) -> float:
+    """计算文章相关性评分
+    
+    评分因子：
+    - 关键词匹配数量
+    - 关键词权重
+    - 匹配位置（标题 > 摘要 > 正文）
+    - 关键词密度
     """
-    计算文章相关性评分
+    if not matches:
+        return 0.0
+    
+    score = 0.0
+    
+    # 基础分数：匹配关键词数量
+    base_score = len(matches) * 0.1
+    
+    # 位置权重
+    position_weights = {
+        'title': 3.0,
+        'summary': 2.0,
+        'content': 1.0
+    }
+    
+    # 分类权重
+    category_weights = self.config.weights
+    
+    for match in matches:
+        # 位置加权
+        position = self._get_match_position(match, article)
+        position_weight = position_weights.get(position, 1.0)
+        
+        # 分类加权
+        category_weight = category_weights.get(match.category, 1.0)
+        
+        # 累加分数
+        score += position_weight * category_weight * 0.1
+    
+    # 归一化到 0-1 范围
+    return min(score, 1.0)
+```
+
+### 3. 文章筛选实现
+
+```python
+def filter(self, articles: List[Article]) -> List[KeywordFilterResult]:
+    """筛选文章列表"""
+    results = []
+    
+    for article in articles:
+        # 首先检查是否包含黑名单关键词（新增）
+        text_content = self._prepare_text(article)
+        if self.matcher.check_blacklist(text_content):
+            # 如果包含黑名单关键词，直接跳过
+            continue
+            
+        result = self.filter_single(article)
+        if result and result.relevance_score >= self.config.threshold:
+            results.append(result)
+    
+    # 按相关性分数排序
+    results.sort(key=lambda x: x.relevance_score, reverse=True)
+    
+    # 限制结果数量
+    if len(results) > self.config.max_results:
+        results = results[:self.config.max_results]
+    
+    return results
+
+def filter_single(self, article: Article) -> Optional[KeywordFilterResult]:
+    """筛选单篇文章"""
+    # 准备文本内容
+    text_content = self._prepare_text(article)
+    
+    # 检查是否包含黑名单关键词（新增）
+    if self.matcher.check_blacklist(text_content):
+        return None
+    
+    # 查找关键词匹配
+    matches = self.matcher.find_matches(text_content)
+    
+    # 检查最少匹配数量
+    if len(matches) < self.config.min_matches:
+        return None
+    
+    # 计算相关性评分
+    relevance_score = self.calculate_relevance_score(matches, article)
+    
+    # 创建筛选结果
+    result = KeywordFilterResult(
+        article=article,
+        matched_keywords=matches,
+        relevance_score=relevance_score
+    )
+    
+    return result
+```
+
+## 中国黑名单配置
+
+为了完全过滤中国相关新闻，我们在 `default_keywords.py` 中添加了中国黑名单配置：
+
+```python
+# 中国黑名单关键词（包含国家、地区、大学、政府机构和公司）
+CHINA_BLACKLIST = [
+    # 国家和地区
+    "中国", "China", "Chinese", "PRC", "People's Republic of China",
+    "中华人民共和国", "中华", "mainland China", "中国大陆",
+    "北京", "Beijing", "上海", "Shanghai", "广州", "Guangzhou", "深圳", "Shenzhen",
+    
+    # 中国大学和研究机构
+    "清华大学", "Tsinghua University", "北京大学", "Peking University", 
+    "中国科学院", "Chinese Academy of Sciences", "CAS", "中科院",
+    "复旦大学", "Fudan University", "浙江大学", "Zhejiang University",
+    "上海交通大学", "Shanghai Jiao Tong University", "中国人民大学", "Renmin University",
+    "南京大学", "Nanjing University", "武汉大学", "Wuhan University",
+    "中国科学技术大学", "University of Science and Technology of China", "USTC",
+    
+    # 政府机构
+    "中共", "CCP", "Chinese Communist Party", "中国共产党",
+    "国务院", "State Council", "中央政府", "Central Government",
+    "科技部", "Ministry of Science and Technology", "工信部", "MIIT",
+    "教育部", "Ministry of Education", "外交部", "Ministry of Foreign Affairs",
+    
+    # 科技公司
+    "华为", "Huawei", "中兴", "ZTE", "小米", "Xiaomi", "OPPO", "vivo", "联想", "Lenovo",
+    "阿里巴巴", "Alibaba", "腾讯", "Tencent", "百度", "Baidu", "京东", "JD.com", "字节跳动", "ByteDance",
+    "滴滴", "DiDi", "美团", "Meituan", "网易", "NetEase", "哔哩哔哩", "Bilibili", "快手", "Kuaishou",
+    "商汤", "SenseTime", "旷视", "Megvii", "依图", "Yitu", "云从", "CloudWalk",
+    
+    # 半导体公司
+    "中芯国际", "SMIC", "长江存储", "YMTC", "紫光", "Unisoc", "华虹", "Huahong",
+    
+    # 通信公司
+    "中国移动", "China Mobile", "中国电信", "China Telecom", "中国联通", "China Unicom",
+    
+    # 能源公司
+    "中石油", "PetroChina", "中石化", "Sinopec", "中海油", "CNOOC",
+    
+    # 金融公司
+    "中国银行", "Bank of China", "工商银行", "ICBC", "建设银行", "CCB",
+    "农业银行", "ABC", "中信", "CITIC", "平安", "Ping An",
+    
+    # 制造业公司
+    "比亚迪", "BYD", "吉利", "Geely", "长城", "Great Wall Motors",
+    "宁德时代", "CATL", "中国中车", "CRRC"
+]
+```
+
+这些关键词将用于完全过滤包含中国相关内容的新闻，包括中国国家、地区、大学、政府机构和公司，而不是仅仅降低其评分。
+
+def calculate_relevance_score(self, matches: List[KeywordMatch], 
+                            article: Article) -> float:
+    """计算文章相关性评分
     
     评分因子：
     - 关键词匹配数量
