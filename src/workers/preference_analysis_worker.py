@@ -39,9 +39,22 @@ class PreferenceAnalysisWorker(threading.Thread):
             if not articles_data:
                 raise ValueError("No articles found or failed to fetch feed.")
 
+            # Filter articles based on title
+            print("Filtering articles for '每日全球科技要闻' in title...")
+            filtered_articles_data = [
+                article for article in articles_data
+                if "每日全球科技要闻" in article.get('title', '')
+            ]
+
+            if not filtered_articles_data:
+                print("No articles with '每日全球科技要闻' in the title found. Job will be marked as completed with no analysis.")
+                job.status = JobStatus.COMPLETED
+                session.commit()
+                return
+
             # 2. Store articles in the database
-            print(f"Storing {len(articles_data)} articles for job {self.job_id}")
-            for article_data in articles_data:
+            print(f"Storing {len(filtered_articles_data)} articles for job {self.job_id}")
+            for article_data in filtered_articles_data:
                 article = Article(
                     job_id=self.job_id,
                     title=article_data['title'],
