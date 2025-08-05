@@ -12,6 +12,7 @@ from ..models.news import NewsArticle
 from .filter_config_dialog import FilterConfigDialog
 from .filter_progress_dialog import FilterProgressDialog, FilterMetricsDialog
 from .rss_manager import RSSManager
+from .panels.preference_analysis_panel import PreferenceAnalysisPanel
 # from .ai_analysis_dialog import AIAnalysisDialog  # 不再需要，改为直接在日志中显示
 
 
@@ -137,7 +138,15 @@ class MainWindow:
 
         # 创建自定义RSS标签页
         self.create_custom_rss_subscription_tab()
+
+        # 创建偏好分析标签页
+        self.create_preference_analysis_tab()
     
+    def create_preference_analysis_tab(self):
+        """创建偏好分析标签页"""
+        self.preference_analysis_frame = PreferenceAnalysisPanel(self.subscription_notebook)
+        self.subscription_notebook.add(self.preference_analysis_frame, text="偏好分析")
+
     def create_right_panel(self, parent):
         """创建右侧面板"""
         right_frame = ttk.Frame(parent)
