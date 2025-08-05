@@ -198,6 +198,37 @@ class RSSService:
         if not html_content:
             return ''
         
+        # A simple approach to remove HTML tags
+        clean = re.sub('<.*?>', '', html_content)
+        return clean.strip()
+
+    def fetch_articles_for_analysis(self, url: str) -> List[Dict[str, Any]]:
+        """
+        Fetches articles from an RSS feed and returns them as a list of dicts
+        suitable for preference analysis storage.
+
+        Args:
+            url: The RSS feed URL.
+
+        Returns:
+            A list of article dictionaries, or an empty list if fetching fails.
+        """
+        rss_feed = self.parse_rss_feed(url)
+        if not rss_feed or not rss_feed.articles:
+            logger.warning(f"Could not fetch or parse RSS feed for analysis: {url}")
+            return []
+
+        articles_for_db = []
+        for article in rss_feed.articles:
+            articles_for_db.append({
+                'title': article.title,
+                'content': self._clean_html(article.content or article.summary),
+                'published_at': article.published,
+                'url': article.url
+            })
+        
+        return articles_for_db
+        
         # 移除HTML标签
         clean_text = re.sub(r'<[^>]+>', '', html_content)
         
