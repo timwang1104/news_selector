@@ -51,6 +51,7 @@ class Article(Base):
     content = Column(Text, nullable=True)
     published_at = Column(DateTime, nullable=True)
     url = Column(String, nullable=True)
+    category = Column(String, nullable=True)  # AI生成的主题分类
 
     job = relationship("AnalysisJob", back_populates="articles")
 
