@@ -7,12 +7,14 @@ import threading
 import webbrowser
 from typing import List, Optional
 
-from ..services.filter_service import filter_service
+
 from ..models.news import NewsArticle
 from .filter_config_dialog import FilterConfigDialog
 from .filter_progress_dialog import FilterProgressDialog, FilterMetricsDialog
 from .rss_manager import RSSManager
 from .panels.preference_analysis_panel import PreferenceAnalysisPanel
+from ..services.filter_service import get_filter_service
+from ..services.preference_analysis_service import PreferenceAnalysisService
 # from .ai_analysis_dialog import AIAnalysisDialog  # 不再需要，改为直接在日志中显示
 
 
@@ -30,7 +32,9 @@ class MainWindow:
         self.filter_result = None  # 筛选结果
         self.display_mode = "all"  # 显示模式: "all" 或 "filtered"
         self.selected_subscription = None  # 当前选中的订阅源
-        
+
+        self.filter_service = get_filter_service()
+        self.preference_analysis_service = PreferenceAnalysisService()
         # 同步Agent配置到FilterService
         self.sync_agent_config_on_startup()
 
@@ -42,19 +46,17 @@ class MainWindow:
         """应用启动时同步Agent配置到FilterService"""
         try:
             from src.config.agent_config import agent_config_manager
-            from src.services.filter_service import filter_service
-
             # 获取当前Agent配置
             current_config = agent_config_manager.get_current_config()
             if current_config and current_config.api_config:
                 # 同步API配置到FilterService
-                filter_service.update_config("ai",
+                self.filter_service.update_config("ai",
                     api_key=current_config.api_config.api_key,
                     model_name=current_config.api_config.model_name,
                     base_url=current_config.api_config.base_url
                 )
                 # 重置AI筛选器缓存以使用新配置
-                filter_service.reset_ai_filter()
+                self.filter_service.reset_ai_filter()
                 print(f"✅ 启动时已同步Agent配置 '{current_config.config_name}' 到FilterService")
             else:
                 print("⚠️  启动时没有找到有效的Agent配置")

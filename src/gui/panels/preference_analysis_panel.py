@@ -1,10 +1,16 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
+import threading
+import time
+from src.services.preference_analysis_service import PreferenceAnalysisService
+from src.gui.components.keyword_cloud_widget import KeywordCloudWidget
+from src.database.models import JobStatus
 
 # 偏好分析面板标签页结构
 class PreferenceAnalysisPanel(ttk.Frame):
     def __init__(self, master):
         super().__init__(master)
+        self.service = PreferenceAnalysisService()
         
         # 创建标签页容器
         self.notebook = ttk.Notebook(self)
@@ -32,16 +38,16 @@ class PreferenceAnalysisPanel(ttk.Frame):
 
     def create_keyword_widgets(self, parent):
         # 关键词筛选控件
-        filter_widget = KeywordFilterWidget(parent)
-        filter_widget.pack(fill="x", pady=5, padx=5)
+        self.filter_widget = KeywordFilterWidget(parent, self.refresh_data)
+        self.filter_widget.pack(fill="x", pady=5, padx=5)
 
         # 关键词云图组件
-        cloud_widget = KeywordCloudWidget(parent)
-        cloud_widget.pack(fill="both", expand=True, pady=5, padx=5)
+        self.cloud_widget = KeywordCloudWidget(parent)
+        self.cloud_widget.pack(fill="both", expand=True, pady=5, padx=5)
 
         # 关键词趋势图组件
-        trend_widget = KeywordTrendWidget(parent)
-        trend_widget.pack(fill="both", expand=True, pady=5, padx=5)
+        self.trend_widget = KeywordTrendWidget(parent)
+        self.trend_widget.pack(fill="both", expand=True, pady=5, padx=5)
 
     def create_topic_widgets(self, parent):
         # 话题分布饼图
@@ -62,14 +68,42 @@ class PreferenceAnalysisPanel(ttk.Frame):
         suggestion_widget = OptimizationSuggestionWidget(parent)
         suggestion_widget.pack(fill="both", expand=True, pady=5, padx=5)
 
-# 关键词云图组件
-class KeywordCloudWidget(ttk.Frame):
-    def __init__(self, master):
-        super().__init__(master)
-        ttk.Label(self, text="热门关键词云图 (占位符)").pack(pady=20)
-    
-    def update_wordcloud(self, keywords_data=None):
-        pass
+    def refresh_data(self):
+        threading.Thread(target=self._run_analysis, daemon=True).start()
+
+    def _run_analysis(self):
+        try:
+            job_id = self.service.analyze_historical_data()
+            if job_id is None:
+                self.after(0, self._show_error, "无法启动分析任务，可能没有历史数据。")
+                return
+
+            while True:
+                status_val = self.service.get_analysis_status(job_id)
+                status = JobStatus(status_val) if status_val else None
+                result = None
+                if status == JobStatus.COMPLETED or status == JobStatus.FAILED:
+                    result = self.service.get_analysis_result(job_id)
+                if status == JobStatus.COMPLETED:
+                    if result:
+                        # 将 [(word, score), ...] 格式转换为 {word: score, ...} 格式
+                        keywords_dict = {item[0]: item[1] for item in result}
+                        self.after(0, self.cloud_widget.update_wordcloud, keywords_dict)
+                    break
+                elif status == JobStatus.FAILED:
+                    self.after(0, self._show_error, f"分析任务失败: {result}")
+                    break
+                time.sleep(2)
+        except Exception as e:
+            self.after(0, self._show_error, f"执行分析时出错: {e}")
+        finally:
+            self.after(0, self.filter_widget.refresh_btn.config, {"state": tk.NORMAL})
+
+    def _show_error(self, message):
+        messagebox.showerror("错误", message)
+
+
+
 
 # 关键词趋势图组件
 class KeywordTrendWidget(ttk.Frame):
@@ -82,31 +116,26 @@ class KeywordTrendWidget(ttk.Frame):
 
 # 关键词筛选控件
 class KeywordFilterWidget(ttk.Frame):
-    def __init__(self, master):
+    def __init__(self, master, refresh_callback):
         super().__init__(master)
+        self.refresh_callback = refresh_callback
         
         filter_frame = ttk.Frame(self)
         filter_frame.pack(fill="x", pady=5)
         
-        ttk.Label(filter_frame, text="筛选:").pack(side="left")
-        
-        self.time_range_var = tk.StringVar(value="最近7天")
-        time_combo = ttk.Combobox(filter_frame, textvariable=self.time_range_var,
-                                 values=["今天", "最近3天", "最近7天", "最近30天"], width=10)
-        time_combo.pack(side="left", padx=5)
-        
-        ttk.Label(filter_frame, text="热度≥").pack(side="left", padx=(10, 0))
-        self.threshold_var = tk.StringVar(value="10")
-        threshold_spin = ttk.Spinbox(filter_frame, textvariable=self.threshold_var,
-                                   from_=1, to=100, width=5)
-        threshold_spin.pack(side="left", padx=5)
-        ttk.Label(filter_frame, text="%").pack(side="left")
-        
-        refresh_btn = ttk.Button(filter_frame, text="刷新", command=self.refresh_data)
-        refresh_btn.pack(side="right", padx=5)
+        ttk.Label(filter_frame, text="数据源:").pack(side="left")
+        self.source_var = tk.StringVar(value="历史数据")
+        source_combo = ttk.Combobox(filter_frame, textvariable=self.source_var,
+                                 values=["历史数据", "实时分析(占位符)"], width=15)
+        source_combo.pack(side="left", padx=5)
+        source_combo.config(state="readonly")
+
+        self.refresh_btn = ttk.Button(filter_frame, text="刷新分析", command=self.refresh_data)
+        self.refresh_btn.pack(side="right", padx=5)
 
     def refresh_data(self):
-        print("刷新数据...")
+        self.refresh_btn.config(state=tk.DISABLED)
+        self.refresh_callback()
 
 # 话题分布饼图组件
 class TopicDistributionWidget(ttk.Frame):

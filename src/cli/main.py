@@ -4,7 +4,7 @@
 import click
 from typing import Optional
 
-from ..services.filter_service import filter_service, CLIProgressCallback
+from ..services.filter_service import get_filter_service, CLIProgressCallback
 from ..services.batch_filter_service import custom_rss_batch_filter_manager, BatchFilterConfig
 from ..services.custom_rss_service import CustomRSSService
 from ..utils.result_formatter import ResultFormatter, ResultExporter
@@ -285,7 +285,7 @@ def filter_rss(count: int, filter_type: str, category: Optional[str], show_progr
     # 执行筛选
     try:
         callback = CLIProgressCallback(show_progress) if show_progress else None
-        result = filter_service.filter_articles(
+        result = get_filter_service().filter_articles(
             articles=articles,
             filter_type=filter_type,
             callback=callback

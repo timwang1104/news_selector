@@ -7,7 +7,7 @@ import threading
 from ...models.news import NewsArticle
 from ...services.table_export_service import get_table_export_service
 from ...filters.base import FilterChainResult, CombinedFilterResult
-from ...services.filter_service import filter_service
+from ...services.filter_service import get_filter_service
 
 
 class TablePreviewDialog:
@@ -228,7 +228,7 @@ class TablePreviewDialog:
         """在后台线程中加载预览数据"""
         try:
             # 创建筛选结果
-            filter_result = filter_service.filter_articles(
+            filter_result = get_filter_service().filter_articles(
                 articles=self.articles,
                 filter_type="keyword"  # 使用关键词筛选避免AI调用
             )

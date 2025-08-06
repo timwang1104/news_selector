@@ -50,6 +50,38 @@ class PreferenceAnalysisService:
         finally:
             session.close()
 
+    def analyze_historical_data(self):
+        """
+        Triggers an analysis run on the pre-loaded historical data.
+        """
+        # The historical data is associated with a predefined job ID.
+        from scripts.import_historical_news import HISTORICAL_JOB_ID
+        
+        session = self.Session()
+        try:
+            # Find the special job for historical data
+            historical_job = session.query(AnalysisJob).filter_by(id=HISTORICAL_JOB_ID).first()
+            if not historical_job:
+                print(f"Error: Historical job with ID {HISTORICAL_JOB_ID} not found. Please run the import script first.")
+                return None
+
+            # Reset status to PENDING to allow re-analysis
+            historical_job.status = JobStatus.PENDING
+            session.commit()
+
+            # Start the worker for this specific job
+            worker = PreferenceAnalysisWorker(historical_job.id, self.db_url)
+            worker.start()
+
+            print(f"Successfully started analysis for historical data. Job ID: {historical_job.id}")
+            return historical_job.id
+        except Exception as e:
+            print(f"Failed to start historical analysis. Error: {e}")
+            session.rollback()
+            return None
+        finally:
+            session.close()
+
     def get_analysis_result(self, job_id):
         """
         Retrieves the results of a completed analysis job.
@@ -65,28 +97,11 @@ class PreferenceAnalysisService:
 
 # Example of how to use the service
 if __name__ == '__main__':
-    service = PreferenceAnalysisService('sqlite:///data/preference_analysis.db')
-    
-    # --- Test 1: Request a new analysis ---
-    print("--- Testing: Request Analysis ---")
-    test_rss_url = "http://feeds.bbci.co.uk/news/rss.xml"
-    job_id = service.request_analysis(test_rss_url)
-
-    if job_id:
-        print(f"\n--- Testing: Polling for Status (Job ID: {job_id}) ---")
-        # --- Test 2: Poll for status ---
-        status = None
-        while status not in ["COMPLETED", "FAILED"]:
-            status = service.get_analysis_status(job_id)
-            print(f"Current status: {status}")
-            if status in ["COMPLETED", "FAILED"]:
-                break
-            import time
-            time.sleep(3)
-
-        # --- Test 3: Get the result ---
-        print(f"\n--- Testing: Get Result (Job ID: {job_id}) ---")
-        result = service.get_analysis_result(job_id)
-        print(f"Final result: {result}")
-    else:
-        print("Failed to create a job for testing.")
+    # This is an example of how you might use the service.
+    # For a real application, you would import and use the service class elsewhere.
+    print("PreferenceAnalysisService is ready to be used in your application.")
+    # Example:
+    # service = PreferenceAnalysisService()
+    # job_id = service.request_analysis("http://example.com/rss.xml")
+    # or
+    # job_id = service.analyze_historical_data()

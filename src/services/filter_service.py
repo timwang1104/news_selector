@@ -4,15 +4,17 @@
 import logging
 from typing import List, Optional, Dict, Any
 from ..models.news import NewsArticle
-from ..config.filter_config import filter_config_manager
+from ..config.filter_config import filter_config_manager, AIFilterConfig
 from ..filters.keyword_filter import KeywordFilter
 from ..filters.ai_filter import AIFilter
 from ..filters.filter_chain import FilterChain, FilterProgressCallback
 from ..filters.base import FilterChainResult, CombinedFilterResult
-from .table_export_service import get_table_export_service
+
 
 logger = logging.getLogger(__name__)
 
+
+_filter_service_instance = None
 
 class FilterService:
     """筛选服务"""
@@ -43,7 +45,6 @@ class FilterService:
             except Exception as e:
                 print(f"❌ AI筛选器初始化失败: {e}")
                 # 创建一个空的AI筛选器以避免崩溃
-                from ..config.filter_config import AIFilterConfig
                 fallback_config = AIFilterConfig()
                 self._ai_filter = AIFilter(fallback_config)
         return self._ai_filter
@@ -591,5 +592,13 @@ class CLIProgressCallback(FilterProgressCallback):
         print(f"❌ 筛选错误: {error}")
 
 
-# 全局筛选服务实例
-filter_service = FilterService()
+def get_filter_service():
+    """获取筛选服务单例"""
+    global _filter_service_instance
+    if _filter_service_instance is None:
+        _filter_service_instance = FilterService()
+    return _filter_service_instance
+
+# 为了兼容旧代码，仍然保留一个全局实例
+# 但推荐使用 get_filter_service()
+filter_service = get_filter_service()

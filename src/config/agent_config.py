@@ -641,9 +641,9 @@ class AgentConfigManager:
             current_config = self.get_current_config()
             if current_config and current_config.api_config:
                 # 延迟导入避免循环依赖
-                from ..services.filter_service import filter_service
+                from ..services.filter_service import get_filter_service
 
-                filter_service.update_config("ai",
+                get_filter_service().update_config("ai",
                     api_key=current_config.api_config.api_key,
                     model_name=current_config.api_config.model_name,
                     base_url=current_config.api_config.base_url

@@ -442,7 +442,7 @@ class BatchFilterResultDialog:
         if filename:
             try:
                 # 使用新的MCP表格导出功能
-                from ..services.filter_service import filter_service
+                from ..services.filter_service import get_filter_service
 
                 # 将BatchFilterResult转换为FilterChainResult格式
                 filter_chain_result = self._convert_to_filter_chain_result()
@@ -452,7 +452,7 @@ class BatchFilterResultDialog:
                     return
 
                 # 执行MCP表格导出
-                export_result = filter_service.export_results_to_table(
+                export_result = get_filter_service().export_results_to_table(
                     result=filter_chain_result,
                     output_format="csv",
                     output_path=filename,

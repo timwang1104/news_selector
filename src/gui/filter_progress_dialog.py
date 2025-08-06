@@ -4,7 +4,7 @@
 import tkinter as tk
 from tkinter import ttk
 import threading
-from ..services.filter_service import FilterService, CLIProgressCallback, filter_service
+from ..services.filter_service import FilterService, CLIProgressCallback, get_filter_service
 
 
 class FilterProgressCallback(CLIProgressCallback):
@@ -359,7 +359,7 @@ class FilterProgressDialog:
                 callback = FilterProgressCallback(self, self.filter_type)
 
                 # 执行筛选
-                result = filter_service.filter_articles(
+                result = get_filter_service().filter_articles(
                     articles=self.articles,
                     filter_type=self.filter_type,
                     callback=callback,
@@ -494,9 +494,9 @@ class FilterMetricsDialog:
     def load_metrics(self):
         """加载性能指标"""
         try:
-            from ..services.filter_service import filter_service
             
-            metrics = filter_service.get_metrics()
+            
+            metrics = get_filter_service().get_metrics()
             
             # 清空文本框
             self.metrics_text.delete(1.0, tk.END)
@@ -543,7 +543,7 @@ class FilterMetricsDialog:
         if messagebox.askyesno("确认", "确定要重置所有性能指标吗？"):
             try:
                 from ..services.filter_service import filter_service
-                filter_service.reset_metrics()
+                get_filter_service().reset_metrics()
                 messagebox.showinfo("成功", "性能指标已重置")
                 self.load_metrics()
             except Exception as e:

@@ -378,8 +378,8 @@ class BatchExportDialog:
                 self.dialog.after(0, lambda: self.status_var.set("正在筛选文章..."))
                 self.dialog.after(0, lambda: self.progress_var.set(10))
 
-                from ...services.filter_service import filter_service
-                filter_result = filter_service.filter_articles(
+                from ...services.filter_service import get_filter_service
+                filter_result = get_filter_service().filter_articles(
                     articles=self.articles,
                     filter_type="keyword"
                 )

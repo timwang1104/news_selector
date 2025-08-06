@@ -4,7 +4,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Dict, Any, Optional
-from ..services.filter_service import filter_service
+from ..services.filter_service import get_filter_service
 from ..config.agent_config import agent_config_manager, AgentConfig, AgentAPIConfig, AgentPromptConfig
 
 
@@ -655,7 +655,7 @@ class FilterConfigDialog:
 
         try:
             # 同步API配置到FilterService
-            filter_service.update_config("ai",
+            get_filter_service().update_config("ai",
                 api_key=self.current_agent_config.api_config.api_key,
                 model_name=self.current_agent_config.api_config.model_name,
                 base_url=self.current_agent_config.api_config.base_url
@@ -676,7 +676,7 @@ class FilterConfigDialog:
 
             # 通知FilterService重新加载配置（保持兼容性）
             try:
-                filter_service.reload_config()
+                get_filter_service().reload_config()
             except:
                 pass  # 如果reload_config方法不存在，忽略错误
 

@@ -110,113 +110,66 @@ class TechNewsCrawler:
                 self.close_driver()
             
             # 提取文章信息
-            article = {
-                'url': url,
-                'title': '',
-                'content': '',
-                'published_time': '',
-                'author': '',
-                'tags': [],
-                'category': '',
-                'crawl_time': datetime.now().isoformat()
-            }
+            articles = []
             
-            # 提取标题
-            title_selectors = [
-                '.detail-subject-article-title',
-                '.detail-subject-article-title-link',
-                'h1.title',
-                'h1',
-                '.article-title',
-                '.news-title',
-                'title'
-            ]
-            
-            for selector in title_selectors:
-                title_elem = soup.select_one(selector)
-                if title_elem:
-                    article['title'] = title_elem.get_text(strip=True)
-                    break
-            
-            # 如果还是没有找到标题，尝试从页面title中提取
-            if not article['title']:
-                page_title = soup.find('title')
-                if page_title:
-                    title_text = page_title.get_text(strip=True)
-                    # 移除网站名称等后缀
-                    if ' - ' in title_text:
-                        article['title'] = title_text.split(' - ')[0]
-                    else:
-                        article['title'] = title_text
-            
-            # 提取内容
-            content_selectors = [
-                '.article-content',
-                '.news-content', 
-                '.content',
-                'article',
-                '.main-content'
-            ]
-            
-            for selector in content_selectors:
-                content_elem = soup.select_one(selector)
+            # 查找所有可能是标题的加粗标签
+            # 这边需要根据实际情况调整选择器，strong, b, 或者特定的class
+            title_elements = soup.select('p > strong, p > b')
+
+            if not title_elements:
+                # 如果页面上没有加粗的标题，就尝试把整个页面当作一篇文章
+                # 这种是兼容之前的逻辑
+                # return [super(TechNewsCrawler, self).get_article_detail(url)]
+                logger.warning(f"在页面 {url} 中未找到加粗标题，将尝试提取全文。")
+                content_elem = soup.find('body')
                 if content_elem:
-                    # 移除脚本和样式标签
-                    for script in content_elem(["script", "style"]):
+                    for script in content_elem(["script", "style", "nav", "header", "footer"]):
                         script.decompose()
-                    article['content'] = content_elem.get_text(strip=True)
-                    break
-            
-            # 如果没有找到专门的内容区域，使用整个body
-            if not article['content']:
-                body = soup.find('body')
-                if body:
-                    for script in body(["script", "style", "nav", "header", "footer"]):
-                        script.decompose()
-                    article['content'] = body.get_text(strip=True)
-            
-            # 提取发布时间
-            time_selectors = [
-                '.publish-time',
-                '.time',
-                '.date',
-                'time',
-                '.article-time'
-            ]
-            
-            for selector in time_selectors:
-                time_elem = soup.select_one(selector)
-                if time_elem:
-                    article['published_time'] = time_elem.get_text(strip=True)
-                    break
-            
-            # 提取作者
-            author_selectors = [
-                '.author',
-                '.writer',
-                '.by-author'
-            ]
-            
-            for selector in author_selectors:
-                author_elem = soup.select_one(selector)
-                if author_elem:
-                    article['author'] = author_elem.get_text(strip=True)
-                    break
-            
-            # 提取标签
-            tag_selectors = [
-                '.tags a',
-                '.tag',
-                '.keywords'
-            ]
-            
-            for selector in tag_selectors:
-                tag_elems = soup.select(selector)
-                if tag_elems:
-                    article['tags'] = [tag.get_text(strip=True) for tag in tag_elems]
-                    break
-            
-            return article
+                    full_content = content_elem.get_text(strip=True)
+                    title = soup.title.string if soup.title else url
+                    articles.append({
+                        'url': url,
+                        'title': title,
+                        'content': full_content,
+                        'published_time': '',
+                        'author': '',
+                        'tags': [],
+                        'category': '',
+                        'crawl_time': datetime.now().isoformat()
+                    })
+                return articles
+
+            for i, title_elem in enumerate(title_elements):
+                title_text = title_elem.get_text(strip=True)
+                if not title_text:
+                    continue
+
+                # 提取真实标题和内容
+                real_title = title_text
+                content_parts = []
+                # 从当前标题找到下一个标题之前的所有兄弟节点
+                current_node = title_elem.parent
+                while True:
+                    current_node = current_node.find_next_sibling()
+                    if not current_node or (current_node.find and (current_node.find('strong') or current_node.find('b'))):
+                        break
+                    content_parts.append(current_node.get_text(strip=True))
+                
+                content = "\n".join(filter(None, content_parts)).strip()
+
+                article = {
+                    'url': url,
+                    'title': real_title,
+                    'content': content,
+                    'published_time': '', # 这些字段暂时留空
+                    'author': '',
+                    'tags': [],
+                    'category': '',
+                    'crawl_time': datetime.now().isoformat()
+                }
+                articles.append(article)
+
+            return articles
             
         except Exception as e:
             logger.error(f"获取文章详情失败 {url}: {e}")
@@ -385,11 +338,11 @@ def main():
     logger.info("开始从 links.txt 文件中读取链接并爬取文章")
 
     try:
-        with open('E:/work/prjs/news_selector/scripts/links.txt', 'r', encoding='utf-8') as f:
+        with open('scripts/links.txt', 'r', encoding='utf-8') as f:
             article_urls = [line.strip() for line in f if line.strip()]
         logger.info(f"从 links.txt 文件中加载了 {len(article_urls)} 个链接")
     except FileNotFoundError:
-        logger.error("links.txt 文件未找到，请确保 E:/work/prjs/news_selector/scripts/links.txt 文件存在")
+        logger.error("links.txt 文件未找到，请确保 scripts/links.txt 文件存在")
         return
 
     # 初始化Selenium Driver，供所有文章爬取使用，以提高效率
@@ -398,20 +351,16 @@ def main():
         logger.error("无法初始化WebDriver，程序退出")
         return
 
-    articles = []
+    all_crawled_articles = []
     try:
         for i, url in enumerate(article_urls, 1):
             logger.info(f"正在处理第 {i}/{len(article_urls)} 篇文章: {url}")
-            article_data = crawler.get_article_detail(url)
-            if article_data and article_data.get('content'):
-                # 过滤标题：只保留包含"每日全球科技要闻"的文章
-                if "每日全球科技要闻" in article_data.get('title', ''):
-                    articles.append(article_data)
-                    logger.info(f"✓ 成功获取文章: {article_data['title'][:50]}...")
-                else:
-                    logger.info(f"✗ 跳过文章（标题不匹配）: {article_data.get('title', '无标题')[:50]}...")
+            articles_from_page = crawler.get_article_detail(url)
+            if articles_from_page:
+                all_crawled_articles.extend(articles_from_page)
+                logger.info(f"✓ 从 {url} 成功获取 {len(articles_from_page)} 篇文章")
             else:
-                logger.warning(f"✗ 无法获取文章内容或数据: {url}")
+                logger.warning(f"✗ 无法从 {url} 获取文章内容或数据")
             
             # 添加随机延迟
             time.sleep(random.uniform(1, 3))
@@ -419,17 +368,15 @@ def main():
         # 确保WebDriver在所有操作完成后被关闭
         crawler.close_driver()
 
-    if articles:
+    if all_crawled_articles:
         # 保存文章
-        crawler.save_articles(articles)
+        output_filename = 'data/crawled_news.json'
+        with open(output_filename, 'w', encoding='utf-8') as f:
+            json.dump(all_crawled_articles, f, ensure_ascii=False, indent=2)
         
         logger.info("\n=== 爬取完成 ===")
-        logger.info(f"总共获取: {len(articles)} 篇文章")
-        
-        # 显示过滤统计
-        logger.info("\n=== 过滤统计 ===")
-        logger.info(f"成功获取包含'每日全球科技要闻'的文章: {len(articles)} 篇")
-        print(f"总共找到并保存了 {len(articles)} 篇文章。")
+        logger.info(f"总共获取: {len(all_crawled_articles)} 篇文章")
+        logger.info(f"结果已保存到 {output_filename}")
     else:
         logger.warning("没有获取到任何符合条件的文章")
 

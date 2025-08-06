@@ -32,38 +32,43 @@ class PreferenceAnalysisWorker(threading.Thread):
             job.status = JobStatus.RUNNING
             session.commit()
 
-            # 1. Fetch articles from RSS feed
-            print(f"Fetching articles from {job.rss_url}")
-            rss_service = RSSService()
-            articles_data = rss_service.fetch_articles_for_analysis(job.rss_url)
-            if not articles_data:
-                raise ValueError("No articles found or failed to fetch feed.")
+            # If the job is for a live RSS feed, fetch and store the articles.
+            # For historical data (like job_id=0), we assume articles are already in the DB.
+            if job.rss_url != 'local_import':
+                # 1. Fetch articles from RSS feed
+                print(f"Fetching articles from {job.rss_url}")
+                rss_service = RSSService()
+                articles_data = rss_service.fetch_articles_for_analysis(job.rss_url)
+                if not articles_data:
+                    raise ValueError("No articles found or failed to fetch feed.")
 
-            # Filter articles based on title
-            print("Filtering articles for '每日全球科技要闻' in title...")
-            filtered_articles_data = [
-                article for article in articles_data
-                if "每日全球科技要闻" in article.get('title', '')
-            ]
+                # Filter articles based on title
+                print("Filtering articles for '每日全球科技要闻' in title...")
+                filtered_articles_data = [
+                    article for article in articles_data
+                    if "每日全球科技要闻" in article.get('title', '')
+                ]
 
-            if not filtered_articles_data:
-                print("No articles with '每日全球科技要闻' in the title found. Job will be marked as completed with no analysis.")
-                job.status = JobStatus.COMPLETED
+                if not filtered_articles_data:
+                    print("No articles with '每日全球科技要闻' in the title found. Job will be marked as completed with no analysis.")
+                    job.status = JobStatus.COMPLETED
+                    session.commit()
+                    return
+
+                # 2. Store articles in the database
+                print(f"Storing {len(filtered_articles_data)} articles for job {self.job_id}")
+                for article_data in filtered_articles_data:
+                    article = Article(
+                        job_id=self.job_id,
+                        title=article_data['title'],
+                        content=article_data['content'],
+                        published_at=article_data['published_at'],
+                        url=article_data['url']
+                    )
+                    session.add(article)
                 session.commit()
-                return
-
-            # 2. Store articles in the database
-            print(f"Storing {len(filtered_articles_data)} articles for job {self.job_id}")
-            for article_data in filtered_articles_data:
-                article = Article(
-                    job_id=self.job_id,
-                    title=article_data['title'],
-                    content=article_data['content'],
-                    published_at=article_data['published_at'],
-                    url=article_data['url']
-                )
-                session.add(article)
-            session.commit()
+            else:
+                print(f"Using pre-loaded historical data for job {self.job_id}.")
 
             # 3. Perform keyword extraction
             print("Performing keyword extraction...")

@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from ...models.news import NewsArticle
-from ...services.filter_service import filter_service
+from ...services.filter_service import get_filter_service
 from ...filters.base import FilterChainResult
 
 
@@ -331,7 +331,7 @@ class TableExportDialog:
                 self.dialog.after(0, lambda: self.status_var.set("正在筛选文章..."))
                 self.dialog.after(0, lambda: self.progress_var.set(10))
 
-                filter_result = filter_service.filter_articles(
+                filter_result = get_filter_service().filter_articles(
                     articles=self.articles,
                     filter_type="keyword"  # 使用关键词筛选避免AI调用
                 )
@@ -342,7 +342,7 @@ class TableExportDialog:
             self.dialog.after(0, lambda: self.status_var.set("正在导出表格..."))
 
             # 执行导出
-            export_result = filter_service.export_results_to_table(
+            export_result = get_filter_service().export_results_to_table(
                 result=filter_result,
                 output_format=self.format_var.get(),
                 output_path=self.output_path_var.get(),

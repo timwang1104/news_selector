@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from ..models.news import NewsArticle
 from ..models.rss import RSSFeed, RSSArticle
 from ..services.custom_rss_service import CustomRSSService
-from ..services.filter_service import FilterService, FilterProgressCallback
+from ..services.filter_service import get_filter_service, FilterProgressCallback
 from ..filters.base import (
     FilterChainResult,
     SubscriptionFilterResult,
@@ -88,8 +88,7 @@ class BatchFilterConfig:
 
         # 同时更新FilterService的AI配置
         try:
-            from .filter_service import filter_service
-            filter_service.update_config("ai", min_score_threshold=min_score, batch_max_articles=max_articles)
+            get_filter_service().update_config("ai", min_score_threshold=min_score, batch_max_articles=max_articles)
             print(f"✅ AI筛选配置已更新")
         except Exception as e:
             print(f"⚠️  更新AI筛选配置失败: {e}")
@@ -102,7 +101,7 @@ class CustomRSSBatchFilterManager:
 
     def __init__(self):
         self.custom_rss_service = CustomRSSService()
-        self.filter_service = FilterService()
+        self.filter_service = get_filter_service()
 
     def filter_subscriptions_batch(self,
                                  config: BatchFilterConfig,

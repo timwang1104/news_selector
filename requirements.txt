@@ -26,9 +26,11 @@ httpx>=0.24.0  # 火山引擎SDK依赖
 # deep-translator>=1.11.0  # 已替换为AI大模型翻译
 
 # 数据库依赖
-SQLAlchemy>=2.0.0
+SQLAlchemy==2.0.31
 
 # GUI依赖 (tkinter是Python内置的，无需额外安装)
+matplotlib>=3.7.0
+wordcloud>=1.9.2
 # 如果在某些Linux发行版上tkinter不可用，可能需要安装:
 # Ubuntu/Debian: sudo apt-get install python3-tk
 # CentOS/RHEL: sudo yum install tkinter
