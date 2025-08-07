@@ -33,10 +33,7 @@ class PreferenceAnalysisPanel(ttk.Frame):
         self.notebook.add(self.topic_frame, text="话题分布")
         self.create_topic_widgets(self.topic_frame)
         
-        # 学习进度标签页
-        self.progress_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.progress_frame, text="学习进度")
-        self.create_progress_widgets(self.progress_frame)
+
         
         # 优化建议标签页
         self.suggestion_frame = ttk.Frame(self.notebook)
@@ -65,10 +62,7 @@ class PreferenceAnalysisPanel(ttk.Frame):
         topic_trend_widget = TopicTrendWidget(parent)
         topic_trend_widget.pack(fill="both", expand=True, pady=5, padx=5)
 
-    def create_progress_widgets(self, parent):
-        # 学习进度面板
-        progress_panel = LearningProgressPanel(parent)
-        progress_panel.pack(fill="both", expand=True, pady=5, padx=5)
+
 
     def create_suggestion_widgets(self, parent):
         # 优化建议组件
@@ -573,63 +567,6 @@ class TopicTrendWidget(ttk.Frame):
         for topic in declining_topics:
             ttk.Label(self.declining_frame, text=f"• {topic}", foreground="red").pack(anchor="w")
 
-# 进度条组件
-class ProgressBarWidget(ttk.Frame):
-    def __init__(self, master, title, current, total, percentage):
-        super().__init__(master)
-        
-        title_label = ttk.Label(self, text=title, font=("Arial", 10, "bold"))
-        title_label.pack(anchor="w", pady=(5, 2))
-        
-        self.progress_var = tk.DoubleVar(value=percentage)
-        progress_bar = ttk.Progressbar(self, variable=self.progress_var, 
-                                     maximum=100, length=300)
-        progress_bar.pack(fill="x", pady=2)
-        
-        info_label = ttk.Label(self, text=f"{current}/{total} ({percentage:.1f}%)")
-        info_label.pack(anchor="w", pady=2)
-
-# 学习进度面板
-class LearningProgressPanel(ttk.Frame):
-    def __init__(self, master):
-        super().__init__(master)
-        
-        self.data_progress = ProgressBarWidget(
-            self, "数据收集进度", 1234, 1500, 82.3
-        )
-        self.data_progress.pack(fill="x", pady=5)
-        
-        self.model_progress = ProgressBarWidget(
-            self, "模型训练进度", 14, 20, 70.0
-        )
-        self.model_progress.pack(fill="x", pady=5)
-        
-        self.keyword_progress = ProgressBarWidget(
-            self, "关键词优化", 450, 500, 90.0
-        )
-        self.keyword_progress.pack(fill="x", pady=5)
-        
-        time_frame = ttk.Frame(self)
-        time_frame.pack(fill="x", pady=10)
-        
-        ttk.Label(time_frame, text="最后更新: 2024-01-15 14:30:25").pack(side="left")
-        ttk.Label(time_frame, text="下次更新: 2024-01-15 18:00:00").pack(side="right")
-        
-        button_frame = ttk.Frame(self)
-        button_frame.pack(fill="x", pady=10)
-        
-        ttk.Button(button_frame, text="立即更新", command=self.update_now).pack(side="left", padx=(0, 10))
-        ttk.Button(button_frame, text="查看详情", command=self.show_details).pack(side="left", padx=(0, 10))
-        ttk.Button(button_frame, text="导出报告", command=self.export_report).pack(side="left")
-
-    def update_now(self):
-        print("立即更新")
-
-    def show_details(self):
-        print("查看详情")
-
-    def export_report(self):
-        print("导出报告")
 
 # 优化建议组件
 class OptimizationSuggestionWidget(ttk.Frame):
