@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
 import time
+import math
 from src.services.preference_analysis_service import PreferenceAnalysisService
 from src.gui.components.keyword_cloud_widget import KeywordCloudWidget
 from src.database.models import JobStatus
@@ -141,19 +142,332 @@ class KeywordFilterWidget(ttk.Frame):
 class TopicDistributionWidget(ttk.Frame):
     def __init__(self, master):
         super().__init__(master)
-        ttk.Label(self, text="话题分布分析 (占位符)").pack(pady=20)
-
-    def update_pie_chart(self, topic_data=None):
-        pass
+        self.setup_ui()
+        self.topic_data = None
+        
+    def setup_ui(self):
+        # 标题
+        title_frame = ttk.Frame(self)
+        title_frame.pack(fill="x", pady=5)
+        ttk.Label(title_frame, text="话题分布分析", font=("Arial", 12, "bold")).pack(side="left")
+        
+        # 刷新按钮
+        self.refresh_btn = ttk.Button(title_frame, text="刷新", command=self.refresh_data)
+        self.refresh_btn.pack(side="right")
+        
+        # 主要内容区域
+        main_frame = ttk.Frame(self)
+        main_frame.pack(fill="both", expand=True, pady=5)
+        
+        # 左侧：饼图区域
+        self.chart_frame = ttk.LabelFrame(main_frame, text="话题分布图")
+        self.chart_frame.pack(side="left", fill="both", expand=True, padx=(0, 5))
+        
+        # 饼图画布（使用tkinter Canvas模拟）
+        self.canvas = tk.Canvas(self.chart_frame, width=300, height=300, bg="white")
+        self.canvas.pack(pady=10)
+        
+        # 右侧：统计信息
+        self.stats_frame = ttk.LabelFrame(main_frame, text="统计信息")
+        self.stats_frame.pack(side="right", fill="y", padx=(5, 0))
+        
+        # 统计标签
+        self.stats_labels = {}
+        stats_info = [
+            ("总文章数", "total_articles"),
+            ("话题数量", "total_topics"),
+            ("多样性评分", "diversity_score"),
+            ("集中度指数", "concentration_index")
+        ]
+        
+        for i, (label_text, key) in enumerate(stats_info):
+            ttk.Label(self.stats_frame, text=f"{label_text}:").grid(row=i, column=0, sticky="w", padx=5, pady=2)
+            self.stats_labels[key] = ttk.Label(self.stats_frame, text="--")
+            self.stats_labels[key].grid(row=i, column=1, sticky="w", padx=5, pady=2)
+        
+        # 话题列表
+        list_frame = ttk.LabelFrame(self, text="话题详情")
+        list_frame.pack(fill="both", expand=True, pady=5)
+        
+        # 创建Treeview显示话题列表
+        columns = ("话题", "文章数", "占比%", "平均评分", "趋势")
+        self.topic_tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=8)
+        
+        for col in columns:
+            self.topic_tree.heading(col, text=col)
+            self.topic_tree.column(col, width=80)
+        
+        # 滚动条
+        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=self.topic_tree.yview)
+        self.topic_tree.configure(yscrollcommand=scrollbar.set)
+        
+        self.topic_tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # 绑定双击事件
+        self.topic_tree.bind("<Double-1>", self.on_topic_double_click)
+        
+        # 初始化显示
+        self.show_no_data_message()
+    
+    def refresh_data(self):
+        """刷新数据"""
+        # 这里应该调用服务获取最新数据
+        # 暂时显示加载状态
+        self.show_loading_message()
+        
+        # 模拟异步加载
+        self.after(1000, self.load_sample_data)
+    
+    def load_sample_data(self):
+        """加载示例数据"""
+        # 示例数据
+        sample_data = {
+            "total_articles": 150,
+            "total_topics": 8,
+            "diversity_score": 0.75,
+            "concentration_index": 0.35,
+            "topics": [
+                {"name": "人工智能", "count": 45, "percentage": 30.0, "avg_score": 0.85, "trend": "up"},
+                {"name": "生物技术", "count": 30, "percentage": 20.0, "avg_score": 0.78, "trend": "stable"},
+                {"name": "量子计算", "count": 25, "percentage": 16.7, "avg_score": 0.82, "trend": "up"},
+                {"name": "新能源", "count": 20, "percentage": 13.3, "avg_score": 0.75, "trend": "down"},
+                {"name": "航空航天", "count": 15, "percentage": 10.0, "avg_score": 0.80, "trend": "stable"},
+                {"name": "材料科学", "count": 10, "percentage": 6.7, "avg_score": 0.72, "trend": "up"},
+                {"name": "网络安全", "count": 5, "percentage": 3.3, "avg_score": 0.70, "trend": "stable"}
+            ]
+        }
+        self.update_display(sample_data)
+    
+    def update_display(self, topic_data):
+        """更新显示内容"""
+        self.topic_data = topic_data
+        
+        # 更新统计信息
+        self.stats_labels["total_articles"].config(text=str(topic_data["total_articles"]))
+        self.stats_labels["total_topics"].config(text=str(topic_data["total_topics"]))
+        self.stats_labels["diversity_score"].config(text=f"{topic_data['diversity_score']:.2f}")
+        self.stats_labels["concentration_index"].config(text=f"{topic_data['concentration_index']:.3f}")
+        
+        # 更新饼图
+        self.draw_pie_chart(topic_data["topics"])
+        
+        # 更新话题列表
+        self.update_topic_list(topic_data["topics"])
+    
+    def draw_pie_chart(self, topics):
+        """绘制饼图"""
+        self.canvas.delete("all")
+        
+        if not topics:
+            self.canvas.create_text(150, 150, text="暂无数据", font=("Arial", 12))
+            return
+        
+        # 计算角度
+        total = sum(topic["count"] for topic in topics)
+        if total == 0:
+            return
+        
+        # 颜色列表
+        colors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7", "#DDA0DD", "#98D8C8", "#F7DC6F"]
+        
+        # 绘制饼图
+        start_angle = 0
+        center_x, center_y = 150, 150
+        radius = 80
+        
+        for i, topic in enumerate(topics):
+            angle = (topic["count"] / total) * 360
+            color = colors[i % len(colors)]
+            
+            # 绘制扇形
+            self.canvas.create_arc(
+                center_x - radius, center_y - radius,
+                center_x + radius, center_y + radius,
+                start=start_angle, extent=angle,
+                fill=color, outline="white", width=2
+            )
+            
+            # 添加标签
+            if angle > 10:  # 只有足够大的扇形才显示标签
+                label_angle = math.radians(start_angle + angle / 2)
+                label_x = center_x + (radius * 0.7) * math.cos(label_angle)
+                label_y = center_y + (radius * 0.7) * math.sin(label_angle)
+                
+                self.canvas.create_text(
+                    label_x, label_y,
+                    text=f"{topic['percentage']:.1f}%",
+                    font=("Arial", 8, "bold"),
+                    fill="white"
+                )
+            
+            start_angle += angle
+        
+        # 添加图例
+        legend_y = 20
+        for i, topic in enumerate(topics[:6]):  # 最多显示6个图例
+            color = colors[i % len(colors)]
+            self.canvas.create_rectangle(10, legend_y, 20, legend_y + 10, fill=color, outline="")
+            self.canvas.create_text(25, legend_y + 5, text=topic["name"], anchor="w", font=("Arial", 8))
+            legend_y += 15
+    
+    def update_topic_list(self, topics):
+        """更新话题列表"""
+        # 清空现有数据
+        for item in self.topic_tree.get_children():
+            self.topic_tree.delete(item)
+        
+        # 添加新数据
+        for topic in topics:
+            trend_symbol = {"up": "↑", "down": "↓", "stable": "→"}.get(topic["trend"], "→")
+            self.topic_tree.insert("", "end", values=(
+                topic["name"],
+                topic["count"],
+                f"{topic['percentage']:.1f}",
+                f"{topic['avg_score']:.2f}",
+                trend_symbol
+            ))
+    
+    def on_topic_double_click(self, event):
+        """处理话题双击事件"""
+        selection = self.topic_tree.selection()
+        if selection:
+            item = self.topic_tree.item(selection[0])
+            topic_name = item["values"][0]
+            self.show_topic_details(topic_name)
+    
+    def show_topic_details(self, topic_name):
+        """显示话题详情"""
+        # 创建详情窗口
+        detail_window = tk.Toplevel(self)
+        detail_window.title(f"话题详情 - {topic_name}")
+        detail_window.geometry("600x400")
+        
+        # 添加详情内容
+        ttk.Label(detail_window, text=f"话题: {topic_name}", font=("Arial", 14, "bold")).pack(pady=10)
+        
+        # 这里可以添加更多详细信息
+        info_text = tk.Text(detail_window, wrap="word", height=20)
+        info_text.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        info_text.insert("1.0", f"话题 '{topic_name}' 的详细信息将在这里显示...\n\n")
+        info_text.insert("end", "包括：\n- 相关文章列表\n- 关键词分析\n- 趋势变化\n- 关联话题")
+        info_text.config(state="disabled")
+    
+    def show_no_data_message(self):
+        """显示无数据消息"""
+        self.canvas.delete("all")
+        self.canvas.create_text(150, 150, text="点击刷新按钮加载数据", font=("Arial", 12), fill="gray")
+        
+        for key in self.stats_labels:
+            self.stats_labels[key].config(text="--")
+    
+    def show_loading_message(self):
+        """显示加载消息"""
+        self.canvas.delete("all")
+        self.canvas.create_text(150, 150, text="正在加载数据...", font=("Arial", 12), fill="blue")
 
 # 话题趋势分析组件
 class TopicTrendWidget(ttk.Frame):
     def __init__(self, master):
         super().__init__(master)
-        ttk.Label(self, text="话题趋势变化 (占位符)").pack(pady=20)
-
-    def update_trend_chart(self, trend_data=None):
-        pass
+        self.setup_ui()
+        
+    def setup_ui(self):
+        # 标题
+        title_frame = ttk.Frame(self)
+        title_frame.pack(fill="x", pady=5)
+        ttk.Label(title_frame, text="话题趋势分析", font=("Arial", 12, "bold")).pack(side="left")
+        
+        # 时间范围选择
+        time_frame = ttk.Frame(title_frame)
+        time_frame.pack(side="right")
+        
+        ttk.Label(time_frame, text="时间范围:").pack(side="left")
+        self.time_var = tk.StringVar(value="最近7天")
+        time_combo = ttk.Combobox(time_frame, textvariable=self.time_var,
+                                values=["最近7天", "最近30天", "最近90天"], width=10)
+        time_combo.pack(side="left", padx=5)
+        time_combo.config(state="readonly")
+        
+        # 主要内容区域
+        main_frame = ttk.Frame(self)
+        main_frame.pack(fill="both", expand=True, pady=5)
+        
+        # 左侧：趋势图
+        chart_frame = ttk.LabelFrame(main_frame, text="趋势图")
+        chart_frame.pack(side="left", fill="both", expand=True, padx=(0, 5))
+        
+        self.trend_canvas = tk.Canvas(chart_frame, width=400, height=200, bg="white")
+        self.trend_canvas.pack(pady=10)
+        
+        # 右侧：趋势统计
+        stats_frame = ttk.LabelFrame(main_frame, text="趋势统计")
+        stats_frame.pack(side="right", fill="y", padx=(5, 0))
+        
+        # 新兴话题
+        ttk.Label(stats_frame, text="新兴话题:", font=("Arial", 10, "bold")).pack(anchor="w", padx=5, pady=(5, 2))
+        self.emerging_frame = ttk.Frame(stats_frame)
+        self.emerging_frame.pack(fill="x", padx=5)
+        
+        # 衰落话题
+        ttk.Label(stats_frame, text="衰落话题:", font=("Arial", 10, "bold")).pack(anchor="w", padx=5, pady=(10, 2))
+        self.declining_frame = ttk.Frame(stats_frame)
+        self.declining_frame.pack(fill="x", padx=5)
+        
+        # 初始化显示
+        self.load_sample_trend_data()
+    
+    def load_sample_trend_data(self):
+        """加载示例趋势数据"""
+        # 绘制简单的趋势线
+        self.trend_canvas.delete("all")
+        
+        # 示例数据点
+        import random
+        topics = ["人工智能", "生物技术", "量子计算"]
+        colors = ["#FF6B6B", "#4ECDC4", "#45B7D1"]
+        
+        # 绘制坐标轴
+        self.trend_canvas.create_line(50, 180, 350, 180, fill="black", width=2)  # X轴
+        self.trend_canvas.create_line(50, 20, 50, 180, fill="black", width=2)   # Y轴
+        
+        # 绘制趋势线
+        for i, (topic, color) in enumerate(zip(topics, colors)):
+            points = []
+            for j in range(7):  # 7天数据
+                x = 50 + j * 40
+                y = 180 - random.randint(20, 150)
+                points.extend([x, y])
+            
+            if len(points) >= 4:
+                self.trend_canvas.create_line(points, fill=color, width=2, smooth=True)
+            
+            # 图例
+            legend_y = 20 + i * 20
+            self.trend_canvas.create_line(360, legend_y, 380, legend_y, fill=color, width=3)
+            self.trend_canvas.create_text(385, legend_y, text=topic, anchor="w", font=("Arial", 8))
+        
+        # 更新统计信息
+        self.update_trend_stats()
+    
+    def update_trend_stats(self):
+        """更新趋势统计"""
+        # 清空现有内容
+        for widget in self.emerging_frame.winfo_children():
+            widget.destroy()
+        for widget in self.declining_frame.winfo_children():
+            widget.destroy()
+        
+        # 新兴话题
+        emerging_topics = ["量子计算 (+25%)", "材料科学 (+18%)"]
+        for topic in emerging_topics:
+            ttk.Label(self.emerging_frame, text=f"• {topic}", foreground="green").pack(anchor="w")
+        
+        # 衰落话题
+        declining_topics = ["新能源 (-12%)"]
+        for topic in declining_topics:
+            ttk.Label(self.declining_frame, text=f"• {topic}", foreground="red").pack(anchor="w")
 
 # 进度条组件
 class ProgressBarWidget(ttk.Frame):
