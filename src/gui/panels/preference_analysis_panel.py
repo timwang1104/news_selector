@@ -4,8 +4,14 @@ import threading
 import time
 import math
 from src.services.preference_analysis_service import PreferenceAnalysisService
+from src.services.topic_distribution_service import TopicDistributionService
 from src.gui.components.keyword_cloud_widget import KeywordCloudWidget
-from src.database.models import JobStatus
+from src.database.models import JobStatus, AnalysisResult
+from src.filters.base import CombinedFilterResult, ArticleTag
+from src.models.news import NewsArticle
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+import json
 
 # 偏好分析面板标签页结构
 class PreferenceAnalysisPanel(ttk.Frame):
@@ -142,6 +148,8 @@ class KeywordFilterWidget(ttk.Frame):
 class TopicDistributionWidget(ttk.Frame):
     def __init__(self, master):
         super().__init__(master)
+        self.topic_service = TopicDistributionService()
+        self.preference_service = PreferenceAnalysisService()
         self.setup_ui()
         self.topic_data = None
         
@@ -212,12 +220,108 @@ class TopicDistributionWidget(ttk.Frame):
     
     def refresh_data(self):
         """刷新数据"""
-        # 这里应该调用服务获取最新数据
-        # 暂时显示加载状态
+        # 显示加载状态
         self.show_loading_message()
         
-        # 模拟异步加载
-        self.after(1000, self.load_sample_data)
+        # 在后台线程中加载真实数据
+        threading.Thread(target=self._load_real_data, daemon=True).start()
+    
+    def _load_real_data(self):
+        """从数据库加载真实数据并进行话题分布分析"""
+        try:
+            # 创建数据库连接
+            engine = create_engine('sqlite:///data/preference_analysis.db')
+            Session = sessionmaker(bind=engine)
+            session = Session()
+            
+            # 查询数据库中的文章数据
+            from src.database.models import Article
+            articles = session.query(Article).all()
+            
+            if not articles:
+                # 如果数据库中没有数据，尝试从JSON文件加载
+                results = self.topic_service.load_data_from_json('data/crawled_news.json')
+            else:
+                # 将数据库中的文章转换为CombinedFilterResult格式
+                results = []
+                for article in articles:
+                    # 创建NewsArticle对象
+                    from datetime import datetime
+                    published_dt = article.published_at if article.published_at else datetime.now()
+                    news_article = NewsArticle(
+                        id=str(article.id),
+                        title=article.title,
+                        summary='',
+                        content=article.content or '',
+                        url=article.url or '',
+                        published=published_dt,
+                        updated=published_dt
+                    )
+                    
+                    # 创建标签
+                    tags = []
+                    if article.category:
+                        tags.append(ArticleTag(
+                            name=article.category,
+                            score=0.8,
+                            confidence=0.7,
+                            source='database'
+                        ))
+                    
+                    # 创建CombinedFilterResult对象
+                    result = CombinedFilterResult(
+                        article=news_article,
+                        keyword_result=None,
+                        ai_result=None,
+                        final_score=0.5,
+                        selected=True,
+                        rejection_reason=None,
+                        tags=tags
+                    )
+                    results.append(result)
+            
+            session.close()
+            
+            if results:
+                # 进行话题分布分析
+                analysis_result = self.topic_service.analyze_current_data(results)
+                
+                # 转换为GUI显示格式
+                display_data = self._convert_analysis_result(analysis_result)
+                
+                # 在主线程中更新UI
+                self.after(0, self.update_display, display_data)
+            else:
+                # 没有数据时显示提示
+                self.after(0, self.show_no_data_message)
+                
+        except Exception as e:
+            print(f"加载数据时出错: {e}")
+            # 出错时回退到示例数据
+            self.after(0, self.load_sample_data)
+    
+    def _convert_analysis_result(self, analysis_result):
+        """将TopicDistributionResult转换为GUI显示格式"""
+        topics = []
+        for topic_name, topic_info in analysis_result.topic_distribution.items():
+            topics.append({
+                "name": topic_info.name,
+                "count": topic_info.count,
+                "percentage": topic_info.percentage,
+                "avg_score": topic_info.avg_score,
+                "trend": getattr(topic_info, 'recent_trend', 'stable')
+            })
+        
+        # 按文章数量排序
+        topics.sort(key=lambda x: x['count'], reverse=True)
+        
+        return {
+            "total_articles": analysis_result.total_articles,
+            "total_topics": analysis_result.total_topics,
+            "diversity_score": analysis_result.diversity_score,
+            "concentration_index": analysis_result.concentration_index,
+            "topics": topics
+        }
     
     def load_sample_data(self):
         """加载示例数据"""

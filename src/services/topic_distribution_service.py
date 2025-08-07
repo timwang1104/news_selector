@@ -122,14 +122,20 @@ class TopicDistributionService:
             results = []
             for item in news_data:
                 # 创建NewsArticle对象
+                from datetime import datetime
+                try:
+                    published_dt = datetime.fromisoformat(item.get('published_time', '')) if item.get('published_time') else datetime.now()
+                except:
+                    published_dt = datetime.now()
+                    
                 article = NewsArticle(
-                    url=item.get('url', ''),
+                    id=item.get('url', ''),
                     title=item.get('title', ''),
+                    summary='',
                     content=item.get('content', ''),
-                    published_time=item.get('published_time', ''),
-                    author=item.get('author', ''),
-                    tags=item.get('tags', []),
-                    category=item.get('category', '')
+                    url=item.get('url', ''),
+                    published=published_dt,
+                    updated=published_dt
                 )
                 
                 # 创建标签（如果有category信息）
