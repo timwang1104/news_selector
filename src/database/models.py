@@ -52,6 +52,7 @@ class Article(Base):
     published_at = Column(DateTime, nullable=True)
     url = Column(String, nullable=True)
     category = Column(String, nullable=True)  # AI生成的主题分类
+    tags = Column(String, nullable=True)  # AI生成的细分标签，逗号分隔
 
     job = relationship("AnalysisJob", back_populates="articles")
 

@@ -29,20 +29,25 @@ KIMI_MODEL = "kimi-k2-0711-preview"
 
 # AI主题分类提示词模板
 CATEGORY_PROMPT_TEMPLATE = """
-你是一位专业的学术研究分析师。请根据以下新闻内容，从给定的学科领域列表中选择一个最合适的词来分类这篇新闻。
+你是一位专业的学术研究分析师。请根据以下新闻内容进行分类分析。
 
 新闻标题：{title}
 新闻内容：{content}
 
-请从以下学科领域中选择最合适的一个词：
+请按以下格式返回分析结果：
+主分类：[从以下列表中选择一个最合适的主要领域]
+细分标签：[列出2-4个相关的细分领域，用逗号分隔]
+
+学科领域列表：
 人工智能、机器学习、计算机视觉、自然语言处理、生物技术、医学、物理学、化学、材料科学、能源、环境科学、航空航天、机器人、量子计算、区块链、网络安全、软件工程、数据科学、金融科技、教育技术、其他
 
 要求：
-1. 只返回一个词，不要包含任何解释、标点符号或额外文字
-2. 必须从上述列表中选择
-3. 如果无法确定，请返回"其他"
+1. 主分类：只选择一个最核心的领域
+2. 细分标签：可以包含相关的子领域或交叉领域
+3. 严格按照"主分类：xxx\n细分标签：xxx,xxx,xxx"的格式返回
+4. 如果无法确定主分类，请返回"其他"
 
-分类结果：
+分析结果：
 """
 
 def call_kimi_api(prompt: str) -> str:
@@ -87,16 +92,16 @@ def call_kimi_api(prompt: str) -> str:
         logger.error(f"Kimi API调用异常: {e}")
         return ""
 
-def classify_news_category(title: str, content: str) -> str:
+def classify_news_category(title: str, content: str) -> dict:
     """
-    使用Kimi AI对新闻进行主题分类
+    使用Kimi AI对新闻进行主题分类和标签提取
     
     Args:
         title: 新闻标题
         content: 新闻内容
     
     Returns:
-        str: 分类结果，如果分类失败则返回"其他"
+        dict: 包含category和tags的字典，如果分类失败则返回默认值
     """
     try:
         # 限制内容长度以避免token过多
@@ -114,30 +119,39 @@ def classify_news_category(title: str, content: str) -> str:
         
         if not response:
             logger.warning(f"Kimi API返回空响应，使用默认分类")
-            return "其他"
+            return {"category": "其他", "tags": ""}
         
-        # 清理响应，只保留分类词
-        category = response.strip().replace('"', '').replace("'", "").replace('`', '')
+        # 解析响应格式：主分类：xxx\n细分标签：xxx,xxx,xxx
+        lines = response.strip().split('\n')
+        category = "其他"
+        tags = ""
         
-        # 移除可能的换行符和多余空格
-        category = ' '.join(category.split())
+        for line in lines:
+            line = line.strip()
+            if line.startswith('主分类：'):
+                category = line.replace('主分类：', '').strip()
+            elif line.startswith('细分标签：'):
+                tags = line.replace('细分标签：', '').strip()
         
-        # 验证分类结果长度和内容
-        if len(category) > 20:  # 如果返回内容过长，可能不是单个词
-            logger.warning(f"AI返回的分类过长，使用默认分类: {category[:50]}...")
-            return "其他"
+        # 清理分类结果
+        category = category.replace('"', '').replace("'", "").replace('`', '')
+        tags = tags.replace('"', '').replace("'", "").replace('`', '')
         
-        # 检查是否为空或无效响应
-        if not category or category.lower() in ['none', 'null', 'undefined', '']:
-            logger.warning(f"AI返回空分类，使用默认分类")
-            return "其他"
+        # 验证主分类
+        if not category or len(category) > 20 or category.lower() in ['none', 'null', 'undefined', '']:
+            logger.warning(f"AI返回的主分类无效，使用默认分类: {category}")
+            category = "其他"
+        
+        # 验证标签
+        if tags and len(tags) > 100:  # 限制标签长度
+            tags = tags[:100]
             
-        logger.info(f"Kimi分类成功: {title[:30]}... -> {category}")
-        return category
+        logger.info(f"Kimi分类成功: {title[:30]}... -> 主分类: {category}, 标签: {tags}")
+        return {"category": category, "tags": tags}
         
     except Exception as e:
         logger.error(f"AI分类失败: {e}")
-        return "其他"
+        return {"category": "其他", "tags": ""}
 
 def import_historical_news():
     """
@@ -201,14 +215,17 @@ def import_historical_news():
             content = item.get('content', '')
             url = item.get('url', '')
             
-            # 使用Kimi AI进行主题分类
+            # 使用Kimi AI进行主题分类和标签提取
             if kimi_available:
                 print(f"Processing article {i+1}/{len(news_data)}: {title[:50]}...")
-                category = classify_news_category(title, content)
+                classification_result = classify_news_category(title, content)
+                category = classification_result["category"]
+                tags = classification_result["tags"]
                 # 添加延迟以避免API限制（Kimi API有速率限制）
                 time.sleep(1.0)  # 增加延迟时间
             else:
                 category = "其他"
+                tags = ""
                 print(f"Skipping AI classification for article {i+1}/{len(news_data)} (Kimi API not available)")
             
             article = Article(
@@ -216,7 +233,8 @@ def import_historical_news():
                 title=title,
                 content=content,
                 url=url,
-                category=category
+                category=category,
+                tags=tags
                 # published_at is omitted as it's not in the JSON
             )
             articles_to_add.append(article)
