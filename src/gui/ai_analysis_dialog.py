@@ -275,31 +275,6 @@ class AIAnalysisDialog:
                 analysis_text.insert("1.0", analysis)
                 analysis_text.config(state="disabled")
     
-    def create_suggestions_tab(self, notebook):
-        """创建实施建议标签页"""
-        frame = ttk.Frame(notebook)
-        notebook.add(frame, text="实施建议")
-        
-        main_frame = ttk.Frame(frame)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        ai_result = self.combined_result.ai_result
-        if not ai_result or not ai_result.evaluation:
-            ttk.Label(main_frame, text="没有实施建议", font=("Arial", 12)).pack(pady=20)
-            return
-        
-        evaluation = ai_result.evaluation
-        
-        if evaluation.implementation_suggestions:
-            suggestions_frame = ttk.LabelFrame(main_frame, text="实施建议", padding="10")
-            suggestions_frame.pack(fill=tk.X, pady=(0, 10))
-            
-            for i, suggestion in enumerate(evaluation.implementation_suggestions, 1):
-                suggestion_text = f"{i}. {suggestion}"
-                ttk.Label(suggestions_frame, text=suggestion_text, wraplength=700, 
-                         justify=tk.LEFT).pack(anchor=tk.W, pady=5)
-        else:
-            ttk.Label(main_frame, text="暂无实施建议", font=("Arial", 12)).pack(pady=20)
     
     def open_article_url(self, url):
         """打开文章原文链接"""

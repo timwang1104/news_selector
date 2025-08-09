@@ -149,16 +149,11 @@ class MainWindow:
         # 工具菜单
         tools_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="工具", menu=tools_menu)
-        tools_menu.add_command(label="RSS管理", command=self.show_rss_manager)
-        tools_menu.add_separator()
         tools_menu.add_command(label="批量筛选", command=self.show_batch_filter_dialog)
         tools_menu.add_separator()
         tools_menu.add_command(label="加载筛选缓存", command=self.load_filter_cache_menu)
         tools_menu.add_command(label="清理筛选缓存", command=self.clear_filter_result_cache)
         tools_menu.add_command(label="缓存信息", command=self.show_cache_info)
-        tools_menu.add_separator()
-        tools_menu.add_command(label="翻译测试", command=self.show_translation_test_dialog)
-        tools_menu.add_command(label="翻译设置", command=self.show_translation_settings_dialog)
 
         # 帮助菜单
         help_menu = tk.Menu(menubar, tearoff=0)
