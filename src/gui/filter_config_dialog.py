@@ -515,7 +515,74 @@ class FilterConfigDialog:
             self.config_vars['enable_ai_filter'] = tk.BooleanVar()
         ttk.Checkbutton(flow_frame, text="启用AI筛选",
                        variable=self.config_vars['enable_ai_filter']).pack(anchor=tk.W, padx=5, pady=2)
-        
+
+        # 启用去重功能
+        if 'enable_deduplication' not in self.config_vars:
+            self.config_vars['enable_deduplication'] = tk.BooleanVar()
+        ttk.Checkbutton(flow_frame, text="启用新闻去重",
+                       variable=self.config_vars['enable_deduplication']).pack(anchor=tk.W, padx=5, pady=2)
+
+        # 去重设置
+        dedup_frame = ttk.LabelFrame(frame, text="去重设置")
+        dedup_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # 相似度阈值
+        ttk.Label(dedup_frame, text="相似度阈值 (0.0-1.0):").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        if 'dedup_threshold' not in self.config_vars:
+            self.config_vars['dedup_threshold'] = tk.DoubleVar()
+        dedup_scale = ttk.Scale(dedup_frame, from_=0.5, to=1.0,
+                              variable=self.config_vars['dedup_threshold'],
+                              orient=tk.HORIZONTAL, length=200)
+        dedup_scale.grid(row=0, column=1, padx=5, pady=5)
+
+        dedup_label = ttk.Label(dedup_frame, text="0.80")
+        dedup_label.grid(row=0, column=2, padx=5, pady=5)
+
+        def update_dedup_label(*args):
+            dedup_label.config(text=f"{self.config_vars['dedup_threshold'].get():.2f}")
+        self.config_vars['dedup_threshold'].trace('w', update_dedup_label)
+
+        # 时间窗口
+        ttk.Label(dedup_frame, text="时间窗口 (小时):").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        if 'dedup_time_window' not in self.config_vars:
+            self.config_vars['dedup_time_window'] = tk.IntVar()
+        ttk.Spinbox(dedup_frame, from_=12, to=168, textvariable=self.config_vars['dedup_time_window'],
+                   width=10).grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(dedup_frame, text="(12-168小时)").grid(row=1, column=2, sticky=tk.W, padx=5, pady=5)
+
+        # AI语义去重设置
+        ttk.Separator(dedup_frame, orient='horizontal').grid(row=2, column=0, columnspan=3, sticky='ew', pady=10)
+
+        # AI语义去重开关
+        if 'enable_ai_semantic_dedup' not in self.config_vars:
+            self.config_vars['enable_ai_semantic_dedup'] = tk.BooleanVar()
+        ttk.Checkbutton(dedup_frame, text="启用AI语义去重（筛选后深度去重）",
+                       variable=self.config_vars['enable_ai_semantic_dedup']).grid(row=3, column=0, columnspan=3, sticky=tk.W, padx=5, pady=5)
+
+        # AI语义相似度阈值
+        ttk.Label(dedup_frame, text="AI语义阈值 (0.7-1.0):").grid(row=4, column=0, sticky=tk.W, padx=5, pady=5)
+        if 'ai_semantic_threshold' not in self.config_vars:
+            self.config_vars['ai_semantic_threshold'] = tk.DoubleVar()
+        ai_semantic_scale = ttk.Scale(dedup_frame, from_=0.7, to=1.0,
+                                    variable=self.config_vars['ai_semantic_threshold'],
+                                    orient=tk.HORIZONTAL, length=200)
+        ai_semantic_scale.grid(row=4, column=1, padx=5, pady=5)
+
+        ai_semantic_label = ttk.Label(dedup_frame, text="0.85")
+        ai_semantic_label.grid(row=4, column=2, padx=5, pady=5)
+
+        def update_ai_semantic_label(*args):
+            ai_semantic_label.config(text=f"{self.config_vars['ai_semantic_threshold'].get():.2f}")
+        self.config_vars['ai_semantic_threshold'].trace('w', update_ai_semantic_label)
+
+        # AI语义时间窗口
+        ttk.Label(dedup_frame, text="AI语义时间窗口 (小时):").grid(row=5, column=0, sticky=tk.W, padx=5, pady=5)
+        if 'ai_semantic_time_window' not in self.config_vars:
+            self.config_vars['ai_semantic_time_window'] = tk.IntVar()
+        ttk.Spinbox(dedup_frame, from_=12, to=72, textvariable=self.config_vars['ai_semantic_time_window'],
+                   width=10).grid(row=5, column=1, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(dedup_frame, text="(12-72小时)").grid(row=5, column=2, sticky=tk.W, padx=5, pady=5)
+
         # 结果设置
         result_frame = ttk.LabelFrame(frame, text="结果设置")
         result_frame.pack(fill=tk.X, pady=(0, 10))
@@ -595,9 +662,19 @@ class FilterConfigDialog:
             "chain": {
                 "enable_keyword_filter": True,
                 "enable_ai_filter": True,
+                "enable_deduplication": True,
                 "final_score_threshold": 0.7,
                 "max_final_results": 30,
                 "sort_by": "final_score"
+            },
+            "deduplication": {
+                "threshold": 0.8,
+                "time_window_hours": 72
+            },
+            "ai_semantic_deduplication": {
+                "enabled": True,
+                "threshold": 0.85,
+                "time_window_hours": 48
             }
         }
 
@@ -644,9 +721,21 @@ class FilterConfigDialog:
         chain_config = default_config["chain"]
         self.config_vars['enable_keyword_filter'].set(chain_config.get('enable_keyword_filter', True))
         self.config_vars['enable_ai_filter'].set(chain_config.get('enable_ai_filter', True))
+        self.config_vars['enable_deduplication'].set(chain_config.get('enable_deduplication', True))
         self.config_vars['final_score_threshold'].set(chain_config.get('final_score_threshold', 0.7))
         self.config_vars['max_final_results'].set(chain_config.get('max_final_results', 30))
         self.config_vars['sort_by'].set(chain_config.get('sort_by', 'final_score'))
+
+        # 加载去重配置
+        dedup_config = default_config["deduplication"]
+        self.config_vars['dedup_threshold'].set(dedup_config.get('threshold', 0.8))
+        self.config_vars['dedup_time_window'].set(dedup_config.get('time_window_hours', 72))
+
+        # 加载AI语义去重配置
+        ai_dedup_config = default_config["ai_semantic_deduplication"]
+        self.config_vars['enable_ai_semantic_dedup'].set(ai_dedup_config.get('enabled', True))
+        self.config_vars['ai_semantic_threshold'].set(ai_dedup_config.get('threshold', 0.85))
+        self.config_vars['ai_semantic_time_window'].set(ai_dedup_config.get('time_window_hours', 48))
 
     def sync_agent_config_to_filter_service(self):
         """同步Agent配置到FilterService"""
@@ -734,6 +823,7 @@ class FilterConfigDialog:
             "chain": {
                 "enable_keyword_filter": self.config_vars['enable_keyword_filter'].get(),
                 "enable_ai_filter": self.config_vars['enable_ai_filter'].get(),
+                "enable_deduplication": self.config_vars['enable_deduplication'].get(),
                 "keyword_threshold": self.config_vars['keyword_threshold'].get(),
                 "final_score_threshold": self.config_vars['final_score_threshold'].get(),
                 "max_keyword_results": self.config_vars['max_results'].get(),
@@ -745,6 +835,15 @@ class FilterConfigDialog:
                 "sort_by": self.config_vars['sort_by'].get(),
                 "include_rejected": False,
                 "include_metrics": True
+            },
+            "deduplication": {
+                "threshold": self.config_vars['dedup_threshold'].get(),
+                "time_window_hours": self.config_vars['dedup_time_window'].get()
+            },
+            "ai_semantic_deduplication": {
+                "enabled": self.config_vars['enable_ai_semantic_dedup'].get(),
+                "threshold": self.config_vars['ai_semantic_threshold'].get(),
+                "time_window_hours": self.config_vars['ai_semantic_time_window'].get()
             }
         }
 

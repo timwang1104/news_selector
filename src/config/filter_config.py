@@ -102,6 +102,11 @@ class FilterChainConfig:
     include_rejected: bool = False
     include_metrics: bool = True
 
+    # AI语义去重配置
+    enable_ai_semantic_deduplication: bool = True  # 启用AI语义去重
+    ai_semantic_threshold: float = 0.85           # AI语义相似度阈值
+    ai_semantic_time_window: int = 48             # AI语义去重时间窗口（小时）
+
     # 标签平衡配置
     tag_balance: TagBalanceConfig = None
 

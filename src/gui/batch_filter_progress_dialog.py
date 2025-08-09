@@ -203,6 +203,56 @@ class BatchFilterProgressDialog(BatchFilterProgressCallback):
         self.add_log_message(f"筛选完成，选中 {selected_count} 篇文章")
         self.update_progress()
 
+    def on_global_deduplication_start(self, total_articles: int):
+        """全局去重开始"""
+        self.status_var.set("开始全局去重处理...")
+        self.current_sub_var.set(f"正在处理 {total_articles} 篇文章")
+        self.add_log_message(f"开始全局去重，共 {total_articles} 篇文章")
+        # 设置进度为收集阶段完成（50%）
+        self.progress_var.set(50)
+        self.progress_label.config(text="50% (全局去重中)")
+
+    def on_global_deduplication_complete(self, original_count: int, deduplicated_count: int, removed_count: int):
+        """全局去重完成"""
+        self.add_log_message(f"去重完成: 原始{original_count}篇 → 去重后{deduplicated_count}篇 (去除{removed_count}篇重复)")
+        # 设置进度为去重完成（75%）
+        self.progress_var.set(75)
+        self.progress_label.config(text="75% (去重完成)")
+
+    def on_global_filtering_start(self, article_count: int):
+        """全局筛选开始"""
+        self.status_var.set("开始全局筛选...")
+        self.current_sub_var.set(f"正在筛选 {article_count} 篇文章")
+        self.add_log_message(f"开始全局筛选，共 {article_count} 篇文章")
+
+    def on_global_filtering_complete(self, selected_count: int):
+        """全局筛选完成"""
+        self.add_log_message(f"全局筛选完成，选中 {selected_count} 篇文章")
+        # 设置进度为筛选完成（90%）
+        self.progress_var.set(90)
+        self.progress_label.config(text="90% (筛选完成)")
+
+    def on_result_distribution_start(self):
+        """结果分组开始"""
+        self.status_var.set("正在按来源分组结果...")
+        self.current_sub_var.set("分组处理中")
+        self.add_log_message("开始按来源分组结果")
+
+    def on_result_distribution_complete(self):
+        """结果分组完成"""
+        self.add_log_message("结果分组完成")
+        # 设置进度为分组完成（95%）
+        self.progress_var.set(95)
+        self.progress_label.config(text="95% (分组完成)")
+
+    def on_deduplication_start(self, total_articles: int):
+        """去重开始（用于单独的去重进度）"""
+        self.add_log_message(f"开始去重处理，共 {total_articles} 篇文章")
+
+    def on_deduplication_complete(self, original_count: int, deduplicated_count: int, removed_count: int):
+        """去重完成（用于单独的去重进度）"""
+        self.add_log_message(f"去重完成: 原始{original_count}篇 → 去重后{deduplicated_count}篇 (去除{removed_count}篇重复)")
+
     def on_subscription_error(self, subscription, error: str):
         """订阅源处理错误"""
         self.add_log_message(f"处理失败: {error}", "ERROR")

@@ -40,6 +40,10 @@ class MainWindow:
 
         # 创建界面
         self.create_widgets()
+
+        # 检查并提示加载缓存的筛选结果
+        self.check_and_prompt_cache_loading()
+
         self.update_status("RSS新闻订阅工具已启动")
 
     def sync_agent_config_on_startup(self):
@@ -62,6 +66,56 @@ class MainWindow:
                 print("⚠️  启动时没有找到有效的Agent配置")
         except Exception as e:
             print(f"❌ 启动时同步Agent配置失败: {e}")
+
+    def check_and_prompt_cache_loading(self):
+        """检查并提示加载缓存的筛选结果"""
+        try:
+            from ..utils.filter_result_cache import get_filter_result_cache
+
+            cache = get_filter_result_cache()
+
+            # 检查是否有有效的缓存
+            if cache.has_cached_result(session_id="main_window"):
+                cache_info = cache.get_cache_info()
+                if cache_info and not cache_info['is_expired']:
+                    # 延迟显示提示，确保主窗口已完全加载
+                    self.root.after(1000, lambda: self._show_cache_prompt(cache_info))
+
+        except Exception as e:
+            print(f"❌ 检查缓存失败: {e}")
+
+    def _show_cache_prompt(self, cache_info):
+        """显示缓存加载提示"""
+        try:
+            import tkinter.messagebox as messagebox
+
+            age_hours = cache_info['age_hours']
+            article_count = cache_info['article_count']
+
+            # 格式化时间显示
+            if age_hours < 1:
+                time_str = f"{age_hours * 60:.0f}分钟前"
+            elif age_hours < 24:
+                time_str = f"{age_hours:.1f}小时前"
+            else:
+                time_str = f"{age_hours / 24:.1f}天前"
+
+            message = f"发现上次的筛选结果缓存：\n\n" \
+                     f"📄 文章数量：{article_count}篇\n" \
+                     f"⏰ 缓存时间：{time_str}\n\n" \
+                     f"是否要加载这些筛选结果？"
+
+            if messagebox.askyesno("发现筛选缓存", message, icon='question'):
+                success = self.load_cached_filter_result()
+                if success:
+                    self.update_status(f"已从缓存恢复筛选结果：{article_count}篇文章")
+                else:
+                    messagebox.showwarning("加载失败", "缓存加载失败，可能已过期或损坏")
+            else:
+                print("📂 用户选择不加载缓存")
+
+        except Exception as e:
+            print(f"❌ 显示缓存提示失败: {e}")
 
     def create_widgets(self):
         """创建界面组件"""
@@ -117,6 +171,12 @@ class MainWindow:
         tools_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="工具", menu=tools_menu)
         tools_menu.add_command(label="RSS管理", command=self.show_rss_manager)
+        tools_menu.add_separator()
+        tools_menu.add_command(label="批量筛选", command=self.show_batch_filter_dialog)
+        tools_menu.add_separator()
+        tools_menu.add_command(label="加载筛选缓存", command=self.load_filter_cache_menu)
+        tools_menu.add_command(label="清理筛选缓存", command=self.clear_filter_result_cache)
+        tools_menu.add_command(label="缓存信息", command=self.show_cache_info)
         tools_menu.add_separator()
         tools_menu.add_command(label="翻译测试", command=self.show_translation_test_dialog)
         tools_menu.add_command(label="翻译设置", command=self.show_translation_settings_dialog)
@@ -205,6 +265,10 @@ class MainWindow:
         # 统一筛选按钮
         ttk.Button(filter_buttons_frame, text="筛选",
                   command=self.show_filter_dialog).pack(side=tk.LEFT, padx=(0, 5))
+
+        # AI语义去重按钮
+        ttk.Button(filter_buttons_frame, text="AI语义去重",
+                  command=self.apply_ai_semantic_deduplication).pack(side=tk.LEFT, padx=(0, 5))
 
         # 显示所有文章按钮
         ttk.Button(filter_action_frame, text="显示全部", command=self.show_all_articles).pack(side=tk.LEFT, padx=(5, 0))
@@ -431,13 +495,57 @@ class MainWindow:
     
     def create_status_bar(self):
         """创建状态栏"""
-        self.status_bar = ttk.Label(self.root, text="就绪", relief=tk.SUNKEN, anchor=tk.W)
-        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        # 创建状态栏框架
+        status_frame = ttk.Frame(self.root)
+        status_frame.pack(side=tk.BOTTOM, fill=tk.X)
+
+        # 主状态标签
+        self.status_bar = ttk.Label(status_frame, text="就绪", relief=tk.SUNKEN, anchor=tk.W)
+        self.status_bar.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # 缓存状态标签
+        self.cache_status_label = ttk.Label(status_frame, text="", relief=tk.SUNKEN, anchor=tk.E, width=20)
+        self.cache_status_label.pack(side=tk.RIGHT)
+
+        # 初始化缓存状态显示
+        self.update_cache_status()
 
     def update_status(self, message: str):
         """更新状态栏"""
         self.status_bar.config(text=message)
         self.root.update_idletasks()
+
+    def update_cache_status(self):
+        """更新缓存状态显示"""
+        try:
+            from ..utils.filter_result_cache import get_filter_result_cache
+
+            cache = get_filter_result_cache()
+
+            if cache.has_cached_result(session_id="main_window"):
+                cache_info = cache.get_cache_info()
+                if cache_info and not cache_info['is_expired']:
+                    age_hours = cache_info['age_hours']
+                    article_count = cache_info['article_count']
+
+                    # 格式化时间显示
+                    if age_hours < 1:
+                        time_str = f"{age_hours * 60:.0f}分钟前"
+                    elif age_hours < 24:
+                        time_str = f"{age_hours:.1f}小时前"
+                    else:
+                        time_str = f"{age_hours / 24:.1f}天前"
+
+                    cache_text = f"📂 缓存: {article_count}篇 ({time_str})"
+                    self.cache_status_label.config(text=cache_text)
+                else:
+                    self.cache_status_label.config(text="📂 缓存: 已过期")
+            else:
+                self.cache_status_label.config(text="📂 缓存: 无")
+
+        except Exception as e:
+            print(f"❌ 更新缓存状态失败: {e}")
+            self.cache_status_label.config(text="📂 缓存: 错误")
 
     def update_login_status(self):
         """更新登录状态（已废弃）"""
@@ -1535,12 +1643,19 @@ class MainWindow:
             # 更新文章列表显示
             self.update_filtered_article_list()
 
+            # 保存筛选结果到缓存
+            self.save_filter_result_to_cache()
+
             # 显示筛选结果摘要
             self.show_filter_summary()
         elif progress_dialog.cancelled:
             self.update_status("筛选已取消")
         else:
             self.update_status("筛选失败")
+
+    def show_batch_filter_dialog(self):
+        """显示批量筛选对话框（菜单调用）"""
+        self.batch_filter_articles()
 
     def batch_filter_articles(self, preset_filter_type=None, test_mode=False):
         """批量筛选文章"""
@@ -1586,9 +1701,11 @@ class MainWindow:
                 try:
                     result = manager.filter_subscriptions_batch(config, progress_dialog)
                     # 在主线程中处理结果
-                    self.root.after(0, lambda: self.handle_batch_filter_result(result))
+                    self.root.after(0, lambda r=result: self.handle_batch_filter_result(r))
                 except Exception as e:
-                    self.root.after(0, lambda: self.handle_batch_filter_error(str(e)))
+                    # 捕获异常信息，避免闭包问题
+                    error_msg = str(e)
+                    self.root.after(0, lambda msg=error_msg: self.handle_batch_filter_error(msg))
                 finally:
                     self.root.after(0, progress_dialog.close)
 
@@ -1610,6 +1727,9 @@ class MainWindow:
 
             # 将批量筛选结果集成到主窗口
             self.integrate_batch_filter_result(result)
+
+            # 保存筛选结果到缓存
+            self.save_filter_result_to_cache()
 
             # 更新状态栏
             self.update_status(f"批量筛选完成: 处理了{result.processed_subscriptions}个订阅源，筛选出{result.total_articles_selected}篇文章")
@@ -1788,6 +1908,9 @@ class MainWindow:
             # 更新文章列表显示
             self.update_filtered_article_list()
 
+            # 保存筛选结果到缓存
+            self.save_filter_result_to_cache()
+
             # 显示筛选结果摘要
             self.show_filter_summary()
         elif progress_dialog.cancelled:
@@ -1924,6 +2047,208 @@ class MainWindow:
 
         # 切换到文章列表标签页
         self.notebook.select(0)  # 选择第一个标签页（文章列表）
+
+    def apply_ai_semantic_deduplication(self):
+        """对当前筛选结果应用AI语义去重"""
+        try:
+            # 检查是否有筛选结果
+            if not self.filtered_articles:
+                messagebox.showwarning("提示", "请先执行筛选，然后再进行AI语义去重")
+                return
+
+            # 检查筛选结果数量
+            if len(self.filtered_articles) < 2:
+                messagebox.showinfo("提示", f"当前只有{len(self.filtered_articles)}篇文章，无需去重")
+                return
+
+            print(f"🧠 开始对筛选结果进行AI语义去重...")
+            print(f"   原始筛选结果: {len(self.filtered_articles)}篇文章")
+
+            # 显示进度对话框
+            progress_dialog = self._create_progress_dialog("AI语义去重", "正在分析文章语义相似度...")
+
+            def run_ai_deduplication():
+                try:
+                    from ..services.ai_deduplication_service import ai_semantic_deduplicate
+                    from ..filters.base import CombinedFilterResult
+
+                    # 将筛选结果转换为CombinedFilterResult格式（如果需要）
+                    combined_results = []
+                    for article in self.filtered_articles:
+                        if isinstance(article, CombinedFilterResult):
+                            combined_results.append(article)
+                        else:
+                            # 创建CombinedFilterResult包装
+                            combined_result = CombinedFilterResult(
+                                article=article,
+                                keyword_result=None,
+                                ai_result=None,
+                                final_score=0.8,  # 默认分数
+                                selected=True,
+                                rejection_reason=None
+                            )
+                            combined_results.append(combined_result)
+
+                    # 执行AI语义去重
+                    deduplicated_results, stats = ai_semantic_deduplicate(
+                        combined_results,
+                        semantic_threshold=0.85,
+                        time_window_hours=48
+                    )
+
+                    return deduplicated_results, stats
+
+                except Exception as e:
+                    print(f"❌ AI语义去重失败: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    return None, None
+
+            # 在后台线程中执行AI去重
+            import threading
+            result_container = [None, None]
+
+            def worker():
+                result_container[0], result_container[1] = run_ai_deduplication()
+                # 关闭进度对话框
+                progress_dialog.destroy()
+
+            thread = threading.Thread(target=worker)
+            thread.daemon = True
+            thread.start()
+
+            # 显示进度对话框（阻塞）
+            progress_dialog.wait_window()
+
+            # 获取结果
+            deduplicated_results, stats = result_container[0], result_container[1]
+
+            if deduplicated_results is None:
+                messagebox.showerror("错误", "AI语义去重失败，请检查AI服务配置")
+                return
+
+            # 更新筛选结果
+            original_count = len(self.filtered_articles)
+            self.filtered_articles = [r.article if hasattr(r, 'article') else r for r in deduplicated_results]
+
+            # 更新显示
+            self.update_filtered_article_list()
+
+            # 显示去重统计
+            removed_count = original_count - len(self.filtered_articles)
+
+            print(f"✅ AI语义去重完成:")
+            print(f"   原始文章: {original_count}篇")
+            print(f"   保留文章: {len(self.filtered_articles)}篇")
+            print(f"   去除重复: {removed_count}篇")
+            print(f"   语义去重率: {stats.get('semantic_deduplication_rate', 0):.1%}")
+
+            # 显示详细结果对话框
+            self._show_ai_deduplication_result_dialog(stats, original_count, len(self.filtered_articles))
+
+        except Exception as e:
+            print(f"❌ AI语义去重异常: {e}")
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("错误", f"AI语义去重失败: {str(e)}")
+
+    def _create_progress_dialog(self, title, message):
+        """创建进度对话框"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title(title)
+        dialog.geometry("400x150")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # 居中显示
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+        y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
+
+        # 内容
+        ttk.Label(dialog, text=message, font=("Arial", 10)).pack(pady=20)
+
+        # 进度条
+        progress = ttk.Progressbar(dialog, mode='indeterminate')
+        progress.pack(pady=10, padx=20, fill=tk.X)
+        progress.start()
+
+        # 提示
+        ttk.Label(dialog, text="请稍候...", foreground="gray").pack(pady=5)
+
+        return dialog
+
+    def _show_ai_deduplication_result_dialog(self, stats, original_count, final_count):
+        """显示AI语义去重结果对话框"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("AI语义去重结果")
+        dialog.geometry("600x500")
+        dialog.resizable(True, True)
+        dialog.transient(self.root)
+
+        # 居中显示
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+        y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
+
+        # 主框架
+        main_frame = ttk.Frame(dialog)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # 统计信息
+        stats_frame = ttk.LabelFrame(main_frame, text="去重统计", padding=10)
+        stats_frame.pack(fill=tk.X, pady=(0, 10))
+
+        removed_count = original_count - final_count
+        dedup_rate = (removed_count / original_count * 100) if original_count > 0 else 0
+
+        ttk.Label(stats_frame, text=f"原始文章数: {original_count}篇").pack(anchor=tk.W)
+        ttk.Label(stats_frame, text=f"保留文章数: {final_count}篇").pack(anchor=tk.W)
+        ttk.Label(stats_frame, text=f"去除重复数: {removed_count}篇").pack(anchor=tk.W)
+        ttk.Label(stats_frame, text=f"语义去重率: {dedup_rate:.1f}%").pack(anchor=tk.W)
+        ttk.Label(stats_frame, text=f"语义组数: {stats.get('semantic_groups_count', 0)}个").pack(anchor=tk.W)
+
+        # 语义组详情
+        if stats.get('semantic_groups'):
+            groups_frame = ttk.LabelFrame(main_frame, text="语义组详情", padding=10)
+            groups_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+            # 创建文本框显示详情
+            text_frame = ttk.Frame(groups_frame)
+            text_frame.pack(fill=tk.BOTH, expand=True)
+
+            text_widget = tk.Text(text_frame, wrap=tk.WORD, height=15)
+            scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=text_widget.yview)
+            text_widget.configure(yscrollcommand=scrollbar.set)
+
+            text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+            # 填充语义组信息
+            for i, group in enumerate(stats.get('semantic_groups', []), 1):
+                text_widget.insert(tk.END, f"语义组 {i}: {group.get('core_topic', '未知主题')}\n")
+                text_widget.insert(tk.END, f"  保留文章: {group.get('kept_article', {}).get('title', '未知')}\n")
+                text_widget.insert(tk.END, f"  发布时间: {group.get('kept_article', {}).get('published', '未知')}\n")
+                text_widget.insert(tk.END, f"  筛选分数: {group.get('kept_article', {}).get('final_score', 0):.2f}\n")
+                text_widget.insert(tk.END, f"  去除文章:\n")
+
+                for removed in group.get('removed_articles', []):
+                    text_widget.insert(tk.END, f"    - {removed.get('title', '未知')}\n")
+                    text_widget.insert(tk.END, f"      时间: {removed.get('published', '未知')}\n")
+                    text_widget.insert(tk.END, f"      分数: {removed.get('final_score', 0):.2f}\n")
+
+                text_widget.insert(tk.END, "\n")
+
+            text_widget.config(state=tk.DISABLED)
+
+        # 按钮
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X)
+
+        ttk.Button(button_frame, text="确定", command=dialog.destroy).pack(side=tk.RIGHT)
 
     def update_all_articles_ai_scores(self, all_ai_results):
         """更新所有文章的AI得分显示"""
@@ -2078,6 +2403,9 @@ AI筛选通过: {result.ai_filtered_count}
         self.filter_result = None
         self.display_mode = "all"  # 设置为显示所有文章模式
         print(f"设置显示模式为: {self.display_mode}")
+
+        # 清除筛选结果缓存
+        self.clear_filter_result_cache()
 
         # 禁用筛选选项并切换到全部
         self.filtered_radio.config(state=tk.DISABLED)
@@ -2346,7 +2674,218 @@ AI筛选通过: {result.ai_filtered_count}
             print(f"❌ 创建临时筛选结果失败: {e}")
             return None
 
+    def save_filter_result_to_cache(self):
+        """保存筛选结果到缓存"""
+        try:
+            if not self.filtered_articles:
+                return
 
+            from ..utils.filter_result_cache import get_filter_result_cache
+
+            cache = get_filter_result_cache()
+            success = cache.save_filter_result(
+                filtered_articles=self.filtered_articles,
+                filter_result=self.filter_result,
+                session_id="main_window"
+            )
+
+            if success:
+                print(f"✅ 筛选结果已保存到缓存: {len(self.filtered_articles)}篇文章")
+                # 更新缓存状态显示
+                self.update_cache_status()
+
+        except Exception as e:
+            print(f"❌ 保存筛选结果到缓存失败: {e}")
+
+    def load_cached_filter_result(self):
+        """加载缓存的筛选结果"""
+        try:
+            from ..utils.filter_result_cache import get_filter_result_cache
+
+            cache = get_filter_result_cache()
+            cached_data = cache.load_filter_result(session_id="main_window")
+
+            if cached_data:
+                # 恢复筛选结果
+                self.filtered_articles = cached_data["filtered_articles"]
+                self.filter_result = cached_data["filter_result"]
+                self.display_mode = "filtered"
+
+                # 启用筛选选项并切换到筛选视图
+                self.filtered_radio.config(state=tk.NORMAL)
+                self.filter_var.set("filtered")
+
+                # 更新文章列表显示
+                self.update_filtered_article_list()
+
+                print(f"✅ 从缓存恢复筛选结果: {len(self.filtered_articles)}篇文章 (缓存时间: {cached_data['age_hours']:.1f}小时前)")
+                self.update_status(f"从缓存恢复筛选结果: {len(self.filtered_articles)}篇文章")
+
+                # 更新缓存状态显示
+                self.update_cache_status()
+
+                return True
+            else:
+                print("📂 没有找到有效的筛选结果缓存")
+                return False
+
+        except Exception as e:
+            print(f"❌ 加载筛选结果缓存失败: {e}")
+            return False
+
+    def clear_filter_result_cache(self):
+        """清除筛选结果缓存"""
+        try:
+            from ..utils.filter_result_cache import get_filter_result_cache
+
+            cache = get_filter_result_cache()
+            success = cache.clear_cache(session_id="main_window")
+
+            if success:
+                print("🗑️ 筛选结果缓存已清除")
+                self.update_status("筛选结果缓存已清除")
+                # 更新缓存状态显示
+                self.update_cache_status()
+
+            return success
+
+        except Exception as e:
+            print(f"❌ 清除筛选结果缓存失败: {e}")
+            return False
+
+    def load_filter_cache_menu(self):
+        """从菜单加载筛选缓存"""
+        try:
+            from ..utils.filter_result_cache import get_filter_result_cache
+            import tkinter.messagebox as messagebox
+
+            cache = get_filter_result_cache()
+
+            # 检查是否有有效的缓存
+            if not cache.has_cached_result(session_id="main_window"):
+                messagebox.showinfo("提示", "没有找到有效的筛选结果缓存")
+                return
+
+            cache_info = cache.get_cache_info()
+            if not cache_info:
+                messagebox.showwarning("警告", "无法获取缓存信息")
+                return
+
+            if cache_info['is_expired']:
+                messagebox.showwarning("警告", "筛选结果缓存已过期")
+                return
+
+            # 显示缓存信息并询问是否加载
+            age_hours = cache_info['age_hours']
+            article_count = cache_info['article_count']
+
+            # 格式化时间显示
+            if age_hours < 1:
+                time_str = f"{age_hours * 60:.0f}分钟前"
+            elif age_hours < 24:
+                time_str = f"{age_hours:.1f}小时前"
+            else:
+                time_str = f"{age_hours / 24:.1f}天前"
+
+            message = f"找到筛选结果缓存：\n\n" \
+                     f"📄 文章数量：{article_count}篇\n" \
+                     f"⏰ 缓存时间：{time_str}\n" \
+                     f"📊 文件大小：{cache_info['file_size'] / 1024:.1f} KB\n\n" \
+                     f"是否要加载这些筛选结果？"
+
+            if messagebox.askyesno("加载筛选缓存", message, icon='question'):
+                success = self.load_cached_filter_result()
+                if success:
+                    messagebox.showinfo("成功", f"已成功加载筛选结果：{article_count}篇文章")
+                    self.update_status(f"已从缓存加载筛选结果：{article_count}篇文章")
+                else:
+                    messagebox.showerror("失败", "缓存加载失败")
+
+        except Exception as e:
+            print(f"❌ 加载筛选缓存失败: {e}")
+            messagebox.showerror("错误", f"加载筛选缓存失败: {e}")
+
+    def show_cache_info(self):
+        """显示缓存信息对话框"""
+        try:
+            from ..utils.filter_result_cache import get_filter_result_cache
+
+            cache = get_filter_result_cache()
+            cache_info = cache.get_cache_info()
+
+            # 创建信息对话框
+            dialog = tk.Toplevel(self.root)
+            dialog.title("筛选结果缓存信息")
+            dialog.geometry("500x400")
+            dialog.resizable(True, True)
+            dialog.transient(self.root)
+
+            # 居中显示
+            dialog.update_idletasks()
+            x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+            y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+            dialog.geometry(f"+{x}+{y}")
+
+            # 主框架
+            main_frame = ttk.Frame(dialog)
+            main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+            # 缓存信息
+            info_frame = ttk.LabelFrame(main_frame, text="缓存信息", padding=10)
+            info_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+            if cache_info:
+                # 显示缓存详情
+                ttk.Label(info_frame, text=f"会话ID: {cache_info['session_id']}").pack(anchor=tk.W)
+                ttk.Label(info_frame, text=f"保存时间: {cache_info['saved_at'].strftime('%Y-%m-%d %H:%M:%S')}").pack(anchor=tk.W)
+                ttk.Label(info_frame, text=f"缓存时长: {cache_info['age_hours']:.1f} 小时").pack(anchor=tk.W)
+                ttk.Label(info_frame, text=f"文章数量: {cache_info['article_count']} 篇").pack(anchor=tk.W)
+                ttk.Label(info_frame, text=f"文件大小: {cache_info['file_size'] / 1024:.1f} KB").pack(anchor=tk.W)
+                ttk.Label(info_frame, text=f"文件路径: {cache_info['file_path']}").pack(anchor=tk.W)
+
+                status_text = "已过期" if cache_info['is_expired'] else "有效"
+                status_color = "red" if cache_info['is_expired'] else "green"
+                status_label = ttk.Label(info_frame, text=f"状态: {status_text}")
+                status_label.pack(anchor=tk.W)
+
+                # 添加操作按钮
+                button_frame = ttk.Frame(info_frame)
+                button_frame.pack(fill=tk.X, pady=(10, 0))
+
+                def reload_cache():
+                    """重新加载缓存"""
+                    success = self.load_cached_filter_result()
+                    if success:
+                        messagebox.showinfo("成功", "缓存已重新加载")
+                        dialog.destroy()
+                    else:
+                        messagebox.showwarning("失败", "缓存加载失败")
+
+                def clear_cache():
+                    """清除缓存"""
+                    if messagebox.askyesno("确认", "确定要清除筛选结果缓存吗？"):
+                        success = self.clear_filter_result_cache()
+                        if success:
+                            messagebox.showinfo("成功", "缓存已清除")
+                            dialog.destroy()
+                        else:
+                            messagebox.showerror("失败", "缓存清除失败")
+
+                ttk.Button(button_frame, text="重新加载", command=reload_cache).pack(side=tk.LEFT, padx=(0, 5))
+                ttk.Button(button_frame, text="清除缓存", command=clear_cache).pack(side=tk.LEFT, padx=(5, 0))
+
+            else:
+                ttk.Label(info_frame, text="没有找到筛选结果缓存", foreground="gray").pack(anchor=tk.W)
+
+            # 关闭按钮
+            button_frame = ttk.Frame(main_frame)
+            button_frame.pack(fill=tk.X)
+
+            ttk.Button(button_frame, text="关闭", command=dialog.destroy).pack(side=tk.RIGHT)
+
+        except Exception as e:
+            print(f"❌ 显示缓存信息失败: {e}")
+            messagebox.showerror("错误", f"显示缓存信息失败: {str(e)}")
 
     def show_batch_export_dialog(self):
         """显示批量导出对话框"""

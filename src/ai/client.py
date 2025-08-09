@@ -34,9 +34,15 @@ class AIClient:
     def _create_session(self) -> requests.Session:
         """创建HTTP会话"""
         session = requests.Session()
+
+        # 优先使用Agent配置的API密钥
+        api_key = self.config.api_key
+        if self.agent_config and self.agent_config.api_config:
+            api_key = self.agent_config.api_config.api_key or api_key
+
         session.headers.update({
             'Content-Type': 'application/json',
-            'Authorization': f'Bearer {self.config.api_key}'
+            'Authorization': f'Bearer {api_key}'
         })
 
         # 配置代理设置（如果有Agent配置）

@@ -181,6 +181,13 @@ class FilterChain:
             
             # 第三步：结果整合
             final_results = self._combine_results(keyword_results, ai_results)
+
+            # 第四步：AI语义去重（如果启用）
+            if self.config.enable_ai_semantic_deduplication and len(final_results) > 1:
+                print(f"🧠 开始AI语义去重...")
+                final_results = self._apply_ai_semantic_deduplication(final_results, result)
+                print(f"✅ AI语义去重完成")
+
             self._finalize_results(final_results, result)
             
             logger.info(f"Filter chain completed: {result.final_selected_count} articles selected")
@@ -196,6 +203,56 @@ class FilterChain:
             ).total_seconds()
         
         return result
+
+    def _apply_ai_semantic_deduplication(self, combined_results: List[CombinedFilterResult],
+                                       result: FilterChainResult) -> List[CombinedFilterResult]:
+        """应用AI语义去重"""
+        try:
+            from ..services.ai_deduplication_service import ai_semantic_deduplicate
+
+            # 只对选中的文章进行AI语义去重
+            selected_results = [r for r in combined_results if r.selected]
+
+            if len(selected_results) <= 1:
+                return combined_results
+
+            # 执行AI语义去重
+            deduplicated_selected, ai_dedup_stats = ai_semantic_deduplicate(
+                selected_results,
+                semantic_threshold=getattr(self.config, 'ai_semantic_threshold', 0.85),
+                time_window_hours=getattr(self.config, 'ai_semantic_time_window', 48)
+            )
+
+            # 更新结果中的AI语义去重统计
+            if not hasattr(result, 'ai_semantic_deduplication_stats'):
+                result.ai_semantic_deduplication_stats = ai_dedup_stats
+
+            # 标记被AI语义去重移除的文章
+            deduplicated_ids = {r.article.id for r in deduplicated_selected}
+
+            updated_results = []
+            for combined_result in combined_results:
+                if combined_result.selected:
+                    if combined_result.article.id in deduplicated_ids:
+                        # 保留的文章
+                        updated_results.append(combined_result)
+                    else:
+                        # 被AI语义去重移除的文章
+                        combined_result.selected = False
+                        combined_result.rejection_reason = "AI语义去重：与其他文章内容重复"
+                        updated_results.append(combined_result)
+                else:
+                    # 未选中的文章保持原状
+                    updated_results.append(combined_result)
+
+            print(f"   📊 AI语义去重: 原始{len(selected_results)}篇 → 保留{len(deduplicated_selected)}篇")
+
+            return updated_results
+
+        except Exception as e:
+            logger.error(f"AI semantic deduplication failed: {e}")
+            # 如果AI语义去重失败，返回原始结果
+            return combined_results
     
     def process_with_callback(self, articles: List[NewsArticle], 
                             callback: FilterProgressCallback, test_mode: bool = False) -> FilterChainResult:
@@ -258,6 +315,8 @@ class FilterChain:
             ]
             
             # 限制结果数量
+        
+        
             if len(filtered_results) > self.config.max_keyword_results:
                 filtered_results = sorted(
                     filtered_results, 

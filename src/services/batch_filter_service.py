@@ -68,6 +68,16 @@ class BatchFilterConfig:
         self.enable_parallel: bool = True  # 是否启用并行处理
         self.max_workers: int = 3  # 最大并行工作线程数
 
+        # 去重配置
+        self.enable_global_deduplication: bool = True  # 是否启用全局去重（跨新闻源）
+        self.deduplication_threshold: float = 0.8  # 去重相似度阈值
+        self.deduplication_time_window: int = 72  # 去重时间窗口（小时）
+
+        # AI语义去重配置
+        self.enable_ai_semantic_deduplication: bool = True  # 是否启用AI语义去重
+        self.ai_semantic_threshold: float = 0.85  # AI语义相似度阈值
+        self.ai_semantic_time_window: int = 48  # AI语义去重时间窗口（小时）
+
         # 结果配置
         self.max_results_per_subscription: Optional[int] = None  # 每个订阅源最大结果数
         self.min_score_threshold: Optional[float] = None  # 最小分数阈值
@@ -143,11 +153,15 @@ class CustomRSSBatchFilterManager:
         if callback:
             callback.on_batch_start(len(rss_feeds))
 
-        # 处理订阅源
-        if config.enable_parallel:
-            self._process_rss_feeds_parallel(rss_feeds, config, batch_result, callback)
+        # 处理订阅源 - 支持全局去重
+        if config.enable_global_deduplication:
+            self._process_rss_feeds_with_global_deduplication(rss_feeds, config, batch_result, callback)
         else:
-            self._process_rss_feeds_sequential(rss_feeds, config, batch_result, callback)
+            # 传统处理方式（每个源单独去重）
+            if config.enable_parallel:
+                self._process_rss_feeds_parallel(rss_feeds, config, batch_result, callback)
+            else:
+                self._process_rss_feeds_sequential(rss_feeds, config, batch_result, callback)
 
         # 完成处理
         batch_result.processing_end_time = datetime.now()
@@ -162,6 +176,268 @@ class CustomRSSBatchFilterManager:
         logger.info(f"Batch filtering completed: {batch_result.processed_subscriptions}/{batch_result.total_subscriptions} RSS feeds processed")
 
         return batch_result
+
+    def _process_rss_feeds_with_global_deduplication(self,
+                                                   feeds: List[RSSFeed],
+                                                   config: BatchFilterConfig,
+                                                   batch_result: BatchFilterResult,
+                                                   callback: Optional[BatchFilterProgressCallback]):
+        """使用全局去重处理RSS订阅源"""
+        logger.info(f"Starting global deduplication processing for {len(feeds)} RSS feeds")
+
+        # 第一阶段：收集所有文章
+        all_articles = []
+        articles_by_source = {}  # 记录每篇文章来自哪个源
+
+        if callback:
+            callback.on_batch_start(len(feeds))
+
+        print(f"🔄 第一阶段：收集所有新闻源的文章...")
+
+        for i, feed in enumerate(feeds):
+            try:
+                if callback:
+                    subscription = self._rss_feed_to_subscription(feed)
+                    callback.on_subscription_start(subscription, i + 1, len(feeds))
+
+                # 获取文章但不进行筛选
+                articles = self._get_rss_feed_articles(feed, config)
+
+                # 记录文章来源
+                for article in articles:
+                    articles_by_source[article.id] = {
+                        'feed_id': feed.id,
+                        'feed_title': feed.title,
+                        'article': article
+                    }
+
+                all_articles.extend(articles)
+
+                print(f"   📰 {feed.title}: 获取 {len(articles)} 篇文章")
+
+                if callback:
+                    callback.on_subscription_filter_complete(feed, len(articles))
+
+            except Exception as e:
+                logger.error(f"Failed to fetch articles from feed {feed.title}: {e}")
+                print(f"❌ 获取文章失败 {feed.title}: {e}")
+
+                # 创建空结果
+                empty_result = SubscriptionFilterResult(
+                    subscription_id=feed.id,
+                    subscription_title=feed.title,
+                    filter_result=FilterChainResult(total_articles=0, processing_start_time=datetime.now()),
+                    articles_fetched=0,
+                    fetch_time=0.0
+                )
+                batch_result.subscription_results.append(empty_result)
+                batch_result.processed_subscriptions += 1
+
+        print(f"✅ 收集完成：共获取 {len(all_articles)} 篇文章")
+
+        # 第二阶段：全局去重和筛选
+        if all_articles:
+            print(f"🔄 第二阶段：全局去重和筛选...")
+
+            # 通知开始全局去重
+            if callback and hasattr(callback, 'on_global_deduplication_start'):
+                callback.on_global_deduplication_start(len(all_articles))
+
+            # 临时设置AI语义去重配置到筛选服务
+            self._apply_ai_semantic_config_to_filter_service(config)
+
+            # 执行全局筛选（包含去重和AI语义去重）
+            filter_result = self.filter_service.filter_articles(
+                articles=all_articles,
+                filter_type=config.filter_type,
+                enable_deduplication=True  # 强制启用基础去重
+            )
+
+            print(f"✅ 全局筛选完成：")
+            print(f"   原始文章：{filter_result.original_articles_count}")
+            print(f"   去重后：{filter_result.deduplicated_articles_count}")
+            print(f"   去除重复：{filter_result.removed_duplicates_count}")
+            print(f"   最终筛选：{len(filter_result.selected_articles)}")
+
+            # 通知去重完成
+            if callback and hasattr(callback, 'on_global_deduplication_complete'):
+                callback.on_global_deduplication_complete(
+                    filter_result.original_articles_count,
+                    filter_result.deduplicated_articles_count,
+                    filter_result.removed_duplicates_count
+                )
+
+            # 通知筛选完成
+            if callback and hasattr(callback, 'on_global_filtering_complete'):
+                callback.on_global_filtering_complete(len(filter_result.selected_articles))
+
+            # 第三阶段：按来源分组结果
+            print(f"🔄 第三阶段：按来源分组结果...")
+
+            # 通知开始分组
+            if callback and hasattr(callback, 'on_result_distribution_start'):
+                callback.on_result_distribution_start()
+
+            self._distribute_results_by_source(filter_result, articles_by_source, feeds, batch_result, config)
+
+            # 通知分组完成
+            if callback and hasattr(callback, 'on_result_distribution_complete'):
+                callback.on_result_distribution_complete()
+
+        else:
+            print(f"⚠️  没有获取到任何文章")
+            # 为所有订阅源创建空结果
+            for feed in feeds:
+                empty_result = SubscriptionFilterResult(
+                    subscription_id=feed.id,
+                    subscription_title=feed.title,
+                    filter_result=FilterChainResult(total_articles=0, processing_start_time=datetime.now()),
+                    articles_fetched=0,
+                    fetch_time=0.0
+                )
+                batch_result.subscription_results.append(empty_result)
+                batch_result.processed_subscriptions += 1
+
+    def _distribute_results_by_source(self,
+                                    global_filter_result: FilterChainResult,
+                                    articles_by_source: Dict,
+                                    feeds: List[RSSFeed],
+                                    batch_result: BatchFilterResult,
+                                    config: BatchFilterConfig):
+        """将全局筛选结果按来源分组"""
+
+        # 为每个订阅源创建结果统计
+        source_stats = {}
+        for feed in feeds:
+            source_stats[feed.id] = {
+                'feed': feed,
+                'original_articles': 0,
+                'selected_articles': [],
+                'rejected_articles': []
+            }
+
+        # 统计原始文章数
+        for article_id, source_info in articles_by_source.items():
+            feed_id = source_info['feed_id']
+            if feed_id in source_stats:
+                source_stats[feed_id]['original_articles'] += 1
+
+        # 分配筛选通过的文章
+        for combined_result in global_filter_result.selected_articles:
+            # CombinedFilterResult对象，需要访问其article属性
+            article_id = combined_result.article.id
+            if article_id in articles_by_source:
+                source_info = articles_by_source[article_id]
+                feed_id = source_info['feed_id']
+                if feed_id in source_stats:
+                    source_stats[feed_id]['selected_articles'].append(combined_result)
+
+        # 分配被拒绝的文章（如果需要）
+        if hasattr(global_filter_result, 'rejected_articles') and global_filter_result.rejected_articles:
+            for combined_result in global_filter_result.rejected_articles:
+                # CombinedFilterResult对象，需要访问其article属性
+                article_id = combined_result.article.id
+                if article_id in articles_by_source:
+                    source_info = articles_by_source[article_id]
+                    feed_id = source_info['feed_id']
+                    if feed_id in source_stats:
+                        source_stats[feed_id]['rejected_articles'].append(combined_result)
+
+        # 为每个订阅源创建SubscriptionFilterResult
+        for feed_id, stats in source_stats.items():
+            feed = stats['feed']
+
+            # 创建该源的筛选结果
+            source_filter_result = FilterChainResult(
+                total_articles=stats['original_articles'],
+                processing_start_time=global_filter_result.processing_start_time
+            )
+
+            # 设置选中的文章
+            source_filter_result.selected_articles = stats['selected_articles']
+
+            # 复制全局去重统计信息
+            source_filter_result.original_articles_count = global_filter_result.original_articles_count
+            source_filter_result.deduplicated_articles_count = global_filter_result.deduplicated_articles_count
+            source_filter_result.removed_duplicates_count = global_filter_result.removed_duplicates_count
+            source_filter_result.deduplication_stats = global_filter_result.deduplication_stats
+
+            # 设置筛选统计
+            source_filter_result.final_selected_count = len(stats['selected_articles'])
+            source_filter_result.processing_end_time = global_filter_result.processing_end_time
+
+            # 应用结果过滤
+            self._apply_result_filters(source_filter_result, config)
+
+            # 创建订阅源结果
+            subscription_result = SubscriptionFilterResult(
+                subscription_id=feed.id,
+                subscription_title=feed.title,
+                filter_result=source_filter_result,
+                articles_fetched=stats['original_articles'],
+                fetch_time=0.0  # 全局处理模式下无单独获取时间
+            )
+
+            batch_result.subscription_results.append(subscription_result)
+            batch_result.processed_subscriptions += 1
+
+            print(f"   📊 {feed.title}: 原始{stats['original_articles']}篇 → 筛选{len(stats['selected_articles'])}篇")
+
+    def _apply_ai_semantic_config_to_filter_service(self, batch_config: BatchFilterConfig):
+        """将AI语义去重配置应用到筛选服务"""
+        try:
+            # 获取筛选服务的筛选链
+            filter_chain = self.filter_service.filter_chain
+            if not filter_chain:
+                print(f"   ⚠️  筛选链未初始化，跳过AI语义去重配置")
+                return
+
+            # 从批量配置中读取AI语义去重设置
+            enable_ai_semantic = getattr(batch_config, 'enable_ai_semantic_deduplication', True)
+            ai_semantic_threshold = getattr(batch_config, 'ai_semantic_threshold', 0.85)
+            ai_semantic_time_window = getattr(batch_config, 'ai_semantic_time_window', 48)
+
+            # 也从配置文件读取AI语义去重设置
+            try:
+                import json
+                from pathlib import Path
+
+                config_file = Path("config/filter_config.json")
+                if config_file.exists():
+                    with open(config_file, 'r', encoding='utf-8') as f:
+                        file_config = json.load(f)
+
+                        # 读取AI语义去重配置
+                        if 'ai_semantic_deduplication' in file_config:
+                            ai_dedup_config = file_config['ai_semantic_deduplication']
+                            enable_ai_semantic = ai_dedup_config.get('enabled', enable_ai_semantic)
+                            ai_semantic_threshold = ai_dedup_config.get('threshold', ai_semantic_threshold)
+                            ai_semantic_time_window = ai_dedup_config.get('time_window_hours', ai_semantic_time_window)
+
+                        # 读取chain配置中的AI语义去重设置
+                        if 'chain' in file_config:
+                            chain_config = file_config['chain']
+                            if 'enable_ai_semantic_deduplication' in chain_config:
+                                enable_ai_semantic = chain_config['enable_ai_semantic_deduplication']
+                            if 'ai_semantic_threshold' in chain_config:
+                                ai_semantic_threshold = chain_config['ai_semantic_threshold']
+                            if 'ai_semantic_time_window' in chain_config:
+                                ai_semantic_time_window = chain_config['ai_semantic_time_window']
+
+            except Exception as e:
+                logger.warning(f"Failed to load AI semantic deduplication config from file: {e}")
+
+            # 应用配置到筛选链
+            if hasattr(filter_chain, 'config'):
+                filter_chain.config.enable_ai_semantic_deduplication = enable_ai_semantic
+                filter_chain.config.ai_semantic_threshold = ai_semantic_threshold
+                filter_chain.config.ai_semantic_time_window = ai_semantic_time_window
+
+            print(f"   🧠 AI语义去重配置: 启用={enable_ai_semantic}, 阈值={ai_semantic_threshold}, 窗口={ai_semantic_time_window}小时")
+
+        except Exception as e:
+            logger.error(f"Failed to apply AI semantic config to filter service: {e}")
+            print(f"   ❌ AI语义去重配置应用失败: {e}")
 
     def _get_filtered_rss_feeds(self, config: BatchFilterConfig) -> List[RSSFeed]:
         """获取过滤后的RSS订阅源列表"""

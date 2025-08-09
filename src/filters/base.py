@@ -154,6 +154,12 @@ class FilterChainResult:
     ai_filtered_count: int = 0
     final_selected_count: int = 0
 
+    # 去重统计
+    original_articles_count: int = 0
+    deduplicated_articles_count: int = 0
+    removed_duplicates_count: int = 0
+    deduplication_stats: Optional[Dict] = None
+
     # 结果数据
     selected_articles: List[CombinedFilterResult] = None
     rejected_articles: List[CombinedFilterResult] = None

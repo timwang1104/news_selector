@@ -2,13 +2,14 @@
 筛选服务 - 提供新闻筛选的高级接口
 """
 import logging
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from ..models.news import NewsArticle
 from ..config.filter_config import filter_config_manager, AIFilterConfig
 from ..filters.keyword_filter import KeywordFilter
 from ..filters.ai_filter import AIFilter
 from ..filters.filter_chain import FilterChain, FilterProgressCallback
 from ..filters.base import FilterChainResult, CombinedFilterResult
+from .deduplication_service import deduplicate_articles
 
 
 logger = logging.getLogger(__name__)
@@ -67,48 +68,142 @@ class FilterService:
             )
         return self._filter_chain
     
-    def filter_articles(self, articles: List[NewsArticle], 
+    def filter_articles(self, articles: List[NewsArticle],
                        filter_type: str = "chain",
                        callback: Optional[FilterProgressCallback] = None,
-                       test_mode: bool = False) -> FilterChainResult:
+                       test_mode: bool = False,
+                       enable_deduplication: Optional[bool] = None) -> FilterChainResult:
         """
         筛选文章
-        
+
         Args:
             articles: 待筛选的文章列表
             filter_type: 筛选类型 ("keyword", "ai", "chain")
             callback: 进度回调函数
             test_mode: 测试模式，使用模拟数据而不调用AI API
-        
+            enable_deduplication: 是否启用去重功能，None表示从配置读取
+
         Returns:
             筛选结果
         """
         if not articles:
             logger.warning("No articles to filter")
             return FilterChainResult(total_articles=0, processing_start_time=None)
-        
-        logger.info(f"Starting {filter_type} filtering for {len(articles)} articles")
-        print(f"🎯 FilterService.filter_articles: filter_type='{filter_type}', articles={len(articles)}")
+
+        original_count = len(articles)
+        logger.info(f"Starting {filter_type} filtering for {original_count} articles")
+        print(f"🎯 FilterService.filter_articles: filter_type='{filter_type}', articles={original_count}")
+
+        # 执行去重（在筛选前）
+        deduplication_stats = None
+
+        # 确定是否启用去重
+        if enable_deduplication is None:
+            # 从配置读取
+            dedup_config = self._get_deduplication_config()
+            enable_deduplication = dedup_config.get('enabled', True)
+
+        if enable_deduplication and original_count > 1:
+            print(f"🔄 执行去重处理...")
+
+            # 通知开始去重（如果回调支持）
+            if callback and hasattr(callback, 'on_deduplication_start'):
+                callback.on_deduplication_start(original_count)
+
+            # 从配置读取去重参数
+            dedup_config = self._get_deduplication_config()
+
+            articles, deduplication_stats = deduplicate_articles(
+                articles,
+                title_threshold=dedup_config.get('threshold', 0.8),
+                time_window_hours=dedup_config.get('time_window_hours', 72)
+            )
+            deduplicated_count = len(articles)
+            removed_count = original_count - deduplicated_count
+            print(f"✅ 去重完成: 原始{original_count}篇 → 去重后{deduplicated_count}篇 (去除{removed_count}篇重复)")
+            logger.info(f"Deduplication completed: {original_count} → {deduplicated_count} articles")
+
+            # 通知去重完成（如果回调支持）
+            if callback and hasattr(callback, 'on_deduplication_complete'):
+                callback.on_deduplication_complete(original_count, deduplicated_count, removed_count)
 
         try:
+            # 执行筛选
             if filter_type == "keyword":
                 print(f"📝 执行关键词筛选")
-                return self._keyword_only_filter(articles, callback, test_mode)
+                result = self._keyword_only_filter(articles, callback, test_mode)
             elif filter_type == "ai":
                 print(f"🤖 执行AI筛选")
-                return self._ai_only_filter(articles, callback, test_mode)
+                result = self._ai_only_filter(articles, callback, test_mode)
             elif filter_type == "chain":
                 print(f"🔗 执行综合筛选 (关键词+AI)")
                 if callback:
-                    return self.filter_chain.process_with_callback(articles, callback, test_mode)
+                    result = self.filter_chain.process_with_callback(articles, callback, test_mode)
                 else:
-                    return self.filter_chain.process(articles, test_mode)
+                    result = self.filter_chain.process(articles, test_mode)
             else:
                 raise ValueError(f"Unknown filter type: {filter_type}")
-                
+
+            # 添加去重统计信息到结果中
+            if enable_deduplication and deduplication_stats:
+                result.original_articles_count = original_count
+                result.deduplicated_articles_count = len(articles)
+                result.removed_duplicates_count = original_count - len(articles)
+                result.deduplication_stats = deduplication_stats
+            else:
+                result.original_articles_count = original_count
+                result.deduplicated_articles_count = original_count
+                result.removed_duplicates_count = 0
+
+            return result
+
         except Exception as e:
             logger.error(f"Filtering failed: {e}")
             raise
+
+    def _get_deduplication_config(self) -> Dict:
+        """获取去重配置"""
+        try:
+            import json
+            from pathlib import Path
+
+            # 首先尝试从filter_config.json读取
+            config_file = Path("config/filter_config.json")
+            if config_file.exists():
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    if 'deduplication' in config:
+                        return config['deduplication']
+                    # 兼容旧配置，从chain配置中读取
+                    if 'chain' in config and 'enable_deduplication' in config['chain']:
+                        return {
+                            'threshold': 0.8,
+                            'time_window_hours': 72,
+                            'enabled': config['chain']['enable_deduplication']
+                        }
+
+            # 如果没有配置文件，尝试从deduplication_config.json读取
+            dedup_config_file = Path("config/deduplication_config.json")
+            if dedup_config_file.exists():
+                with open(dedup_config_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    if 'deduplication' in config:
+                        return config['deduplication']
+
+            # 返回默认配置
+            return {
+                'threshold': 0.8,
+                'time_window_hours': 72,
+                'enabled': True
+            }
+
+        except Exception as e:
+            logger.warning(f"Failed to load deduplication config: {e}")
+            return {
+                'threshold': 0.8,
+                'time_window_hours': 72,
+                'enabled': True
+            }
     
     def _keyword_only_filter(self, articles: List[NewsArticle],
                            callback: Optional[FilterProgressCallback] = None,

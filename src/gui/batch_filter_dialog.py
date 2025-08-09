@@ -28,6 +28,16 @@ class BatchFilterDialog:
         self.max_results_per_sub_var = tk.StringVar(value="5")
         self.hours_back_var = tk.StringVar(value="24")
         self.exclude_read_var = tk.BooleanVar(value=True)
+
+        # 全局去重配置
+        self.enable_global_dedup_var = tk.BooleanVar(value=True)
+        self.dedup_threshold_var = tk.DoubleVar(value=0.8)
+        self.dedup_time_window_var = tk.IntVar(value=72)
+
+        # AI语义去重配置
+        self.enable_ai_semantic_dedup_var = tk.BooleanVar(value=True)
+        self.ai_semantic_threshold_var = tk.DoubleVar(value=0.85)
+        self.ai_semantic_time_window_var = tk.IntVar(value=48)
     
     def show(self) -> Optional[BatchFilterConfig]:
         """显示对话框并返回配置"""
@@ -150,6 +160,47 @@ class BatchFilterDialog:
         ttk.Label(group, text="最小分数阈值:").grid(row=1, column=0, sticky=tk.W, pady=(10, 0))
         ttk.Entry(group, textvariable=self.min_score_var, width=10).grid(row=1, column=1, sticky=tk.W, padx=(10, 0), pady=(10, 0))
         ttk.Label(group, text="(0.0-1.0)", foreground="gray").grid(row=1, column=2, sticky=tk.W, padx=(5, 0))
+
+        # 全局去重配置
+        ttk.Checkbutton(group, text="启用全局去重（跨新闻源）", variable=self.enable_global_dedup_var).grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=(10, 5))
+
+        # 去重阈值
+        ttk.Label(group, text="去重相似度阈值:").grid(row=3, column=0, sticky=tk.W, pady=(5, 0))
+        ttk.Scale(group, from_=0.5, to=1.0, variable=self.dedup_threshold_var, orient=tk.HORIZONTAL, length=150).grid(row=3, column=1, sticky=tk.W, padx=(10, 0), pady=(5, 0))
+
+        dedup_label = ttk.Label(group, text="0.80")
+        dedup_label.grid(row=3, column=2, sticky=tk.W, padx=(5, 0))
+
+        def update_dedup_label(*args):
+            dedup_label.config(text=f"{self.dedup_threshold_var.get():.2f}")
+        self.dedup_threshold_var.trace('w', update_dedup_label)
+
+        # 去重时间窗口
+        ttk.Label(group, text="去重时间窗口:").grid(row=4, column=0, sticky=tk.W, pady=(5, 0))
+        ttk.Spinbox(group, from_=12, to=168, textvariable=self.dedup_time_window_var, width=10).grid(row=4, column=1, sticky=tk.W, padx=(10, 0), pady=(5, 0))
+        ttk.Label(group, text="小时", foreground="gray").grid(row=4, column=2, sticky=tk.W, padx=(5, 0))
+
+        # AI语义去重分隔线
+        ttk.Separator(group, orient='horizontal').grid(row=5, column=0, columnspan=3, sticky='ew', pady=10)
+
+        # AI语义去重开关
+        ttk.Checkbutton(group, text="启用AI语义去重（筛选后深度去重）", variable=self.enable_ai_semantic_dedup_var).grid(row=6, column=0, columnspan=3, sticky=tk.W, pady=(5, 0))
+
+        # AI语义相似度阈值
+        ttk.Label(group, text="AI语义阈值:").grid(row=7, column=0, sticky=tk.W, pady=(5, 0))
+        ttk.Scale(group, from_=0.7, to=1.0, variable=self.ai_semantic_threshold_var, orient=tk.HORIZONTAL, length=150).grid(row=7, column=1, sticky=tk.W, padx=(10, 0), pady=(5, 0))
+
+        ai_semantic_label = ttk.Label(group, text="0.85")
+        ai_semantic_label.grid(row=7, column=2, sticky=tk.W, padx=(5, 0))
+
+        def update_ai_semantic_label(*args):
+            ai_semantic_label.config(text=f"{self.ai_semantic_threshold_var.get():.2f}")
+        self.ai_semantic_threshold_var.trace('w', update_ai_semantic_label)
+
+        # AI语义时间窗口
+        ttk.Label(group, text="AI语义时间窗口:").grid(row=8, column=0, sticky=tk.W, pady=(5, 0))
+        ttk.Spinbox(group, from_=12, to=72, textvariable=self.ai_semantic_time_window_var, width=10).grid(row=8, column=1, sticky=tk.W, padx=(10, 0), pady=(5, 0))
+        ttk.Label(group, text="小时", foreground="gray").grid(row=8, column=2, sticky=tk.W, padx=(5, 0))
     
     def create_performance_config(self, parent):
         """创建性能配置"""
@@ -212,7 +263,20 @@ class BatchFilterDialog:
             max_results = self.max_results_per_sub_var.get().strip()
             if max_results:
                 config.max_results_per_subscription = int(max_results)
-            
+
+            # 全局去重配置
+            config.enable_global_deduplication = self.enable_global_dedup_var.get()
+            config.deduplication_threshold = self.dedup_threshold_var.get()
+            config.deduplication_time_window = self.dedup_time_window_var.get()
+
+            # AI语义去重配置（如果存在）
+            if hasattr(self, 'enable_ai_semantic_dedup_var'):
+                config.enable_ai_semantic_deduplication = self.enable_ai_semantic_dedup_var.get()
+            if hasattr(self, 'ai_semantic_threshold_var'):
+                config.ai_semantic_threshold = self.ai_semantic_threshold_var.get()
+            if hasattr(self, 'ai_semantic_time_window_var'):
+                config.ai_semantic_time_window = self.ai_semantic_time_window_var.get()
+
             self.result = config
             self.dialog.destroy()
             
