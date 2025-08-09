@@ -424,6 +424,7 @@ class FilterService:
 
         try:
             # 获取表格导出服务
+            from .table_export_service import get_table_export_service
             export_service = get_table_export_service(enable_translation=enable_translation)
 
             # 导出文章
