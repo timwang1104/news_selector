@@ -41,7 +41,7 @@ class MainWindow:
         # 创建界面
         self.create_widgets()
 
-        # 检查并提示加载缓存的筛选结果
+        # 自动加载上次的筛选结果缓存
         self.check_and_prompt_cache_loading()
 
         self.update_status("RSS新闻订阅工具已启动")
@@ -68,7 +68,7 @@ class MainWindow:
             print(f"❌ 启动时同步Agent配置失败: {e}")
 
     def check_and_prompt_cache_loading(self):
-        """检查并提示加载缓存的筛选结果"""
+        """自动加载缓存的筛选结果"""
         try:
             from ..utils.filter_result_cache import get_filter_result_cache
 
@@ -78,17 +78,15 @@ class MainWindow:
             if cache.has_cached_result(session_id="main_window"):
                 cache_info = cache.get_cache_info()
                 if cache_info and not cache_info['is_expired']:
-                    # 延迟显示提示，确保主窗口已完全加载
-                    self.root.after(1000, lambda: self._show_cache_prompt(cache_info))
+                    # 延迟自动加载缓存，确保主窗口已完全加载
+                    self.root.after(1000, lambda: self._auto_load_cache(cache_info))
 
         except Exception as e:
-            print(f"❌ 检查缓存失败: {e}")
+            pass
 
-    def _show_cache_prompt(self, cache_info):
-        """显示缓存加载提示"""
+    def _auto_load_cache(self, cache_info):
+        """自动加载缓存的筛选结果"""
         try:
-            import tkinter.messagebox as messagebox
-
             age_hours = cache_info['age_hours']
             article_count = cache_info['article_count']
 
@@ -100,22 +98,15 @@ class MainWindow:
             else:
                 time_str = f"{age_hours / 24:.1f}天前"
 
-            message = f"发现上次的筛选结果缓存：\n\n" \
-                     f"📄 文章数量：{article_count}篇\n" \
-                     f"⏰ 缓存时间：{time_str}\n\n" \
-                     f"是否要加载这些筛选结果？"
-
-            if messagebox.askyesno("发现筛选缓存", message, icon='question'):
-                success = self.load_cached_filter_result()
-                if success:
-                    self.update_status(f"已从缓存恢复筛选结果：{article_count}篇文章")
-                else:
-                    messagebox.showwarning("加载失败", "缓存加载失败，可能已过期或损坏")
+            # 自动加载缓存
+            success = self.load_cached_filter_result()
+            if success:
+                self.update_status(f"已自动恢复筛选结果：{article_count}篇文章 ({time_str})")
             else:
-                print("📂 用户选择不加载缓存")
+                self.update_status("缓存加载失败")
 
         except Exception as e:
-            print(f"❌ 显示缓存提示失败: {e}")
+            pass
 
     def create_widgets(self):
         """创建界面组件"""
@@ -148,18 +139,6 @@ class MainWindow:
         file_menu.add_separator()
         file_menu.add_command(label="退出", command=self.root.quit)
         
-        # 查看菜单
-        view_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="查看", menu=view_menu)
-        view_menu.add_command(label="刷新新闻", command=self.refresh_news)
-        view_menu.add_command(label="刷新订阅源", command=self.refresh_subscriptions)
-        view_menu.add_separator()
-        view_menu.add_command(label="清除缓存", command=self.clear_cache)
-        view_menu.add_command(label="缓存状态", command=self.show_cache_status)
-        view_menu.add_separator()
-        view_menu.add_command(label="显示统计", command=self.show_statistics)
-
-
 
         # 导出菜单
         export_menu = tk.Menu(menubar, tearoff=0)
@@ -2718,15 +2697,11 @@ AI筛选通过: {result.ai_filtered_count}
                 # 更新文章列表显示
                 self.update_filtered_article_list()
 
-                print(f"✅ 从缓存恢复筛选结果: {len(self.filtered_articles)}篇文章 (缓存时间: {cached_data['age_hours']:.1f}小时前)")
-                self.update_status(f"从缓存恢复筛选结果: {len(self.filtered_articles)}篇文章")
-
                 # 更新缓存状态显示
                 self.update_cache_status()
 
                 return True
             else:
-                print("📂 没有找到有效的筛选结果缓存")
                 return False
 
         except Exception as e:
