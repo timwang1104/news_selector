@@ -77,13 +77,20 @@ class RSSManager:
         toolbar.pack(fill=tk.X, pady=(0, 5))
         
         ttk.Button(toolbar, text="添加RSS", command=self.add_rss_subscription).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(toolbar, text="导入预设源", command=self.import_preset_feeds).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="编辑", command=self.edit_rss_subscription).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="启用/停用", command=self.toggle_feed_status).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="删除", command=self.remove_rss_subscription).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="刷新选中", command=self.refresh_selected_feed).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="全部刷新", command=self.refresh_all_feeds).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(toolbar, text="清理旧文章", command=self.cleanup_old_articles).pack(side=tk.LEFT)
+
+        # 时间范围筛选
+        ttk.Label(toolbar, text="时间范围:").pack(side=tk.LEFT, padx=(10, 5))
+        self.time_range_var = tk.StringVar(value="全部")
+        time_range_combo = ttk.Combobox(toolbar, textvariable=self.time_range_var,
+                                       values=["全部", "最近1小时", "最近1天", "最近7天", "最近30天"],
+                                       state="readonly", width=12)
+        time_range_combo.pack(side=tk.LEFT, padx=(0, 5))
+        time_range_combo.bind("<<ComboboxSelected>>", self.on_time_range_changed)
         
         # RSS订阅源列表
         tree_frame = ttk.Frame(main_frame)
@@ -248,54 +255,83 @@ class RSSManager:
         if self.selected_feed:
             self.load_feed_articles(self.selected_feed)
 
-    def cleanup_old_articles(self):
-        """清理旧的未读文章"""
-        from tkinter import simpledialog
+    def on_time_range_changed(self, event):
+        """时间范围变化处理"""
+        if self.selected_feed and self.article_callback:
+            # 立即应用时间范围筛选并更新文章列表
+            filtered_articles = self.filter_articles_by_time_range(self.selected_feed.articles)
+            title = self.get_article_list_title(self.selected_feed, filtered_articles)
+            self.article_callback(filtered_articles, title)
 
-        # 询问保留天数
-        days = simpledialog.askinteger(
-            "清理设置",
-            "请输入要保留的天数（默认7天）：",
-            initialvalue=7,
-            minvalue=1,
-            maxvalue=365
-        )
+    def load_feed_articles(self, feed):
+        """加载订阅源文章（应用时间范围筛选）"""
+        if self.article_callback:
+            filtered_articles = self.filter_articles_by_time_range(feed.articles)
+            title = self.get_article_list_title(feed, filtered_articles)
+            self.article_callback(filtered_articles, title)
 
-        if days is None:  # 用户取消
-            return
+    def get_article_list_title(self, feed, filtered_articles):
+        """生成文章列表标题，包含筛选信息"""
+        time_range = self.time_range_var.get()
+        total_count = len(feed.articles)
+        filtered_count = len(filtered_articles)
 
-        # 确认清理
-        if not messagebox.askyesno(
-            "确认清理",
-            f"确定要删除 {days} 天前的所有未读文章吗？\n\n"
-            "注意：此操作不可撤销！"
-        ):
-            return
-
-        def cleanup():
-            try:
-                removed_count, feeds_count = self.custom_rss_service.cleanup_old_unread_articles(days)
-
-                # 在主线程中更新UI
-                self.parent_frame.after(0, lambda: self._handle_cleanup_result(removed_count, feeds_count, days))
-            except Exception as e:
-                self.parent_frame.after(0, lambda: messagebox.showerror("错误", f"清理失败: {e}"))
-
-        # 在后台线程中执行
-        threading.Thread(target=cleanup, daemon=True).start()
-
-    def _handle_cleanup_result(self, removed_count: int, feeds_count: int, days: int):
-        """处理清理结果"""
-        if removed_count > 0:
-            message = f"清理完成！\n\n从 {feeds_count} 个订阅源中删除了 {removed_count} 篇 {days} 天前的未读文章。"
-            messagebox.showinfo("清理完成", message)
-
-            # 刷新界面
-            self.refresh_rss_feed_list()
-            if self.selected_feed:
-                self.load_feed_articles(self.selected_feed)
+        if time_range == "全部":
+            return f"RSS: {feed.title} ({total_count} 篇)"
         else:
-            messagebox.showinfo("清理完成", f"没有找到需要清理的 {days} 天前的未读文章。")
+            return f"RSS: {feed.title} ({time_range}: {filtered_count}/{total_count} 篇)"
+
+    def get_time_range_hours(self):
+        """获取时间范围对应的小时数"""
+        time_range = self.time_range_var.get()
+        if time_range == "最近1小时":
+            return 1
+        elif time_range == "最近1天":
+            return 24
+        elif time_range == "最近7天":
+            return 24 * 7
+        elif time_range == "最近30天":
+            return 24 * 30
+        else:  # "全部"
+            return None
+
+    def filter_articles_by_time_range(self, articles):
+        """根据时间范围筛选文章"""
+        hours = self.get_time_range_hours()
+        if hours is None:
+            return articles
+
+        from datetime import datetime, timedelta
+        cutoff_time = datetime.now() - timedelta(hours=hours)
+
+        filtered_articles = []
+        for article in articles:
+            # 检查文章发布时间
+            if hasattr(article, 'published') and article.published:
+                # 如果published是datetime对象
+                if isinstance(article.published, datetime):
+                    article_time = article.published
+                else:
+                    # 如果是字符串，尝试解析
+                    try:
+                        from dateutil import parser
+                        article_time = parser.parse(str(article.published))
+                    except:
+                        # 解析失败，包含在结果中
+                        filtered_articles.append(article)
+                        continue
+
+                # 移除时区信息进行比较
+                if article_time.tzinfo is not None:
+                    article_time = article_time.replace(tzinfo=None)
+
+                if article_time >= cutoff_time:
+                    filtered_articles.append(article)
+            else:
+                # 没有发布时间信息，包含在结果中
+                filtered_articles.append(article)
+
+        return filtered_articles
 
     def on_feed_select(self, event):
         """RSS订阅源选择事件"""
@@ -320,9 +356,11 @@ class RSSManager:
                 # 通过回调通知主窗口更新订阅源选择
                 if self.subscription_callback:
                     self.subscription_callback(feed)
-                # 通过回调通知主窗口更新文章列表
+                # 通过回调通知主窗口更新文章列表（应用时间范围筛选）
                 if self.article_callback:
-                    self.article_callback(feed.articles, f"RSS: {feed.title}")
+                    filtered_articles = self.filter_articles_by_time_range(feed.articles)
+                    title = self.get_article_list_title(feed, filtered_articles)
+                    self.article_callback(filtered_articles, title)
                 break
 
 
@@ -505,34 +543,7 @@ class RSSManager:
                 return True
         
         return False
-    
-    def import_preset_feeds(self):
-        """导入预设RSS源"""
-        dialog = PresetRSSDialog(self.parent_frame)
-        if dialog.result:
-            selected_feeds = dialog.result
-            
-            def add_feeds():
-                try:
-                    success_count = 0
-                    total_count = len(selected_feeds)
-                    
-                    for feed_data in selected_feeds:
-                        success, message = self.custom_rss_service.add_subscription(
-                            feed_data['url'], 
-                            feed_data['category']
-                        )
-                        if success:
-                            success_count += 1
-                    
-                    # 在主线程中更新UI
-                    self.parent_frame.after(0, lambda: self._handle_import_result(success_count, total_count))
-                except Exception as e:
-                    self.parent_frame.after(0, lambda: messagebox.showerror("错误", f"导入预设RSS源失败: {e}"))
-            
-            # 在后台线程中执行
-            threading.Thread(target=add_feeds, daemon=True).start()
-    
+
     def _handle_import_result(self, success_count: int, total_count: int):
         """处理导入结果"""
         if success_count > 0:
@@ -610,247 +621,6 @@ class RSSAddDialog:
 
         self.result = (url, category)
         self.dialog.destroy()
-
-    def cancel(self):
-        """取消按钮"""
-        self.dialog.destroy()
-
-
-class PresetRSSDialog:
-    """预设RSS源选择对话框"""
-
-    def __init__(self, parent):
-        self.result = None
-        
-        # 导入预设RSS源数据
-        from ..data.preset_rss_feeds import PRESET_RSS_FEEDS, RSS_CATEGORIES
-        self.preset_feeds = PRESET_RSS_FEEDS
-        self.categories = RSS_CATEGORIES
-
-        # 创建对话框窗口
-        self.dialog = tk.Toplevel(parent)
-        self.dialog.title("导入预设RSS源")
-        self.dialog.geometry("800x600")
-        self.dialog.resizable(True, True)
-        self.dialog.transient(parent)
-        self.dialog.grab_set()
-
-        # 居中显示
-        self.dialog.geometry("+%d+%d" % (
-            parent.winfo_rootx() + 50,
-            parent.winfo_rooty() + 50
-        ))
-
-        self.create_widgets()
-
-        # 等待对话框关闭
-        self.dialog.wait_window()
-
-    def create_widgets(self):
-        """创建对话框组件"""
-        main_frame = ttk.Frame(self.dialog)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-
-        # 标题
-        title_frame = ttk.Frame(main_frame)
-        title_frame.pack(fill=tk.X, pady=(0, 15))
-        
-        ttk.Label(title_frame, text="选择要导入的预设RSS源", font=("Arial", 14, "bold")).pack(side=tk.LEFT)
-        
-        # 统计信息
-        total_feeds = len(self.preset_feeds)
-        ttk.Label(title_frame, text=f"共 {total_feeds} 个预设源", 
-                 font=("Arial", 10), foreground="gray").pack(side=tk.RIGHT)
-
-        # 分类筛选
-        filter_frame = ttk.Frame(main_frame)
-        filter_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        ttk.Label(filter_frame, text="分类筛选:").pack(side=tk.LEFT, padx=(0, 5))
-        self.category_var = tk.StringVar(value="全部")
-        category_combo = ttk.Combobox(filter_frame, textvariable=self.category_var, 
-                                     values=["全部"] + list(self.categories.keys()),
-                                     state="readonly", width=15)
-        category_combo.pack(side=tk.LEFT, padx=(0, 10))
-        category_combo.bind("<<ComboboxSelected>>", self.on_category_change)
-        
-        # 全选/全不选按钮
-        ttk.Button(filter_frame, text="全选", command=self.select_all).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(filter_frame, text="全不选", command=self.select_none).pack(side=tk.LEFT)
-
-        # RSS源列表
-        list_frame = ttk.Frame(main_frame)
-        list_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
-        
-        # 创建Treeview
-        self.feed_tree = ttk.Treeview(list_frame, columns=("name", "category", "description"), 
-                                     show="tree headings", height=15)
-        self.feed_tree.heading("#0", text="选择")
-        self.feed_tree.heading("name", text="名称")
-        self.feed_tree.heading("category", text="分类")
-        self.feed_tree.heading("description", text="描述")
-        
-        # 设置列宽
-        self.feed_tree.column("#0", width=60)
-        self.feed_tree.column("name", width=200)
-        self.feed_tree.column("category", width=100)
-        self.feed_tree.column("description", width=300)
-        
-        # 滚动条
-        tree_scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.feed_tree.yview)
-        self.feed_tree.configure(yscrollcommand=tree_scrollbar.set)
-        
-        self.feed_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        tree_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # 绑定事件
-        self.feed_tree.bind("<Button-1>", self.on_tree_click)
-        self.feed_tree.bind("<Button-1>", self.on_header_click, add="+")
-        
-        # 排序状态
-        self.sort_column = None
-        self.sort_reverse = False
-        
-        # 按钮
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X)
-        
-        ttk.Button(button_frame, text="取消", command=self.cancel).pack(side=tk.RIGHT, padx=(10, 0))
-        ttk.Button(button_frame, text="导入选中", command=self.import_selected).pack(side=tk.RIGHT)
-        
-        # 初始化数据
-        self.populate_feeds()
-
-    def populate_feeds(self):
-        """填充RSS源列表"""
-        # 清空现有项目
-        for item in self.feed_tree.get_children():
-            self.feed_tree.delete(item)
-        
-        # 获取当前选择的分类
-        selected_category = self.category_var.get()
-        
-        # 筛选RSS源
-        filtered_feeds = []
-        for feed in self.preset_feeds:
-            # 分类筛选
-            if selected_category != "全部" and feed["category"] != selected_category:
-                continue
-            filtered_feeds.append(feed)
-        
-        # 排序
-        if self.sort_column:
-            filtered_feeds.sort(
-                key=lambda x: x[self.sort_column].lower() if isinstance(x[self.sort_column], str) else str(x[self.sort_column]).lower(),
-                reverse=self.sort_reverse
-            )
-        
-        # 添加RSS源到树形控件
-        for feed in filtered_feeds:
-            item_id = self.feed_tree.insert("", "end", 
-                                            text="☐",  # 未选中状态
-                                            values=(feed["name"], feed["category"], feed["description"]))
-
-    def on_category_change(self, event=None):
-        """分类选择变化事件"""
-        self.populate_feeds()
-
-    def on_tree_click(self, event):
-        """树形控件点击事件"""
-        region = self.feed_tree.identify_region(event.x, event.y)
-        if region == "tree":
-            item = self.feed_tree.identify_row(event.y)
-            if item:
-                self.toggle_selection(item)
-    
-    def on_header_click(self, event):
-        """列标题点击事件"""
-        region = self.feed_tree.identify_region(event.x, event.y)
-        if region == "heading":
-            column = self.feed_tree.identify_column(event.x)
-            self.sort_by_column(column)
-    
-    def sort_by_column(self, column):
-        """按列排序"""
-        # 确定排序列
-        if column == "#1":  # 名称列
-            sort_key = "name"
-        elif column == "#2":  # 分类列
-            sort_key = "category"
-        elif column == "#3":  # 描述列
-            sort_key = "description"
-        else:
-            return
-        
-        # 如果点击的是同一列，则反转排序
-        if self.sort_column == sort_key:
-            self.sort_reverse = not self.sort_reverse
-        else:
-            self.sort_column = sort_key
-            self.sort_reverse = False
-        
-        # 更新列标题显示排序指示器
-        self.update_column_headers()
-        
-        # 重新填充列表（带排序）
-        self.populate_feeds()
-    
-    def update_column_headers(self):
-        """更新列标题显示排序指示器"""
-        # 清除所有列的排序指示器
-        self.feed_tree.heading("name", text="名称")
-        self.feed_tree.heading("category", text="分类")
-        self.feed_tree.heading("description", text="描述")
-        
-        # 为当前排序列添加指示器
-        if self.sort_column:
-            arrow = " ↓" if self.sort_reverse else " ↑"
-            if self.sort_column == "name":
-                self.feed_tree.heading("name", text="名称" + arrow)
-            elif self.sort_column == "category":
-                self.feed_tree.heading("category", text="分类" + arrow)
-            elif self.sort_column == "description":
-                self.feed_tree.heading("description", text="描述" + arrow)
-
-    def toggle_selection(self, item):
-        """切换选择状态"""
-        current_text = self.feed_tree.item(item, "text")
-        if current_text == "☐":
-            self.feed_tree.item(item, text="☑")
-        else:
-            self.feed_tree.item(item, text="☐")
-
-    def select_all(self):
-        """全选"""
-        for item in self.feed_tree.get_children():
-            self.feed_tree.item(item, text="☑")
-
-    def select_none(self):
-        """全不选"""
-        for item in self.feed_tree.get_children():
-            self.feed_tree.item(item, text="☐")
-
-    def import_selected(self):
-         """导入选中的RSS源"""
-         selected_feeds = []
-         
-         for item in self.feed_tree.get_children():
-             if self.feed_tree.item(item, "text") == "☑":
-                 values = self.feed_tree.item(item, "values")
-                 # 从原始数据中获取完整信息
-                 for feed in self.preset_feeds:
-                     if (feed["name"] == values[0] and 
-                         feed["category"] == values[1] and 
-                         feed["description"] == values[2]):
-                         selected_feeds.append(feed)
-                         break
-         
-         if not selected_feeds:
-             messagebox.showwarning("警告", "请至少选择一个RSS源", parent=self.dialog)
-             return
-         
-         self.result = selected_feeds
-         self.dialog.destroy()
 
     def cancel(self):
         """取消按钮"""

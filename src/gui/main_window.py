@@ -244,21 +244,8 @@ class MainWindow:
         ttk.Button(filter_buttons_frame, text="AI语义去重",
                   command=self.apply_ai_semantic_deduplication).pack(side=tk.LEFT, padx=(0, 5))
 
-        # 显示所有文章按钮
-        ttk.Button(filter_action_frame, text="显示全部", command=self.show_all_articles).pack(side=tk.LEFT, padx=(5, 0))
-        
         # 翻译按钮
         ttk.Button(filter_action_frame, text="🌐 翻译", command=self.translate_selected_article).pack(side=tk.LEFT, padx=(5, 0))
-
-        # 筛选类型选择（保留用于高级用户）
-        ttk.Label(filter_action_frame, text="模式:").pack(side=tk.LEFT, padx=(10, 5))
-        self.filter_type_var = tk.StringVar(value="chain")
-        filter_type_combo = ttk.Combobox(filter_action_frame, textvariable=self.filter_type_var,
-                                       values=["keyword", "ai", "chain"], width=10, state="readonly")
-        filter_type_combo.pack(side=tk.LEFT)
-
-        # 绑定选择变化事件
-        filter_type_combo.bind("<<ComboboxSelected>>", self.on_filter_type_changed)
 
         # 文章搜索
         search_frame = ttk.Frame(toolbar)
@@ -547,7 +534,6 @@ class MainWindow:
 
     def update_article_list(self, articles: List[NewsArticle]):
         """更新文章列表UI"""
-        print(f"🔄 update_article_list被调用，文章数量: {len(articles)}")
         self.current_articles = articles
 
         # 如果当前有筛选结果，不要覆盖
@@ -561,11 +547,6 @@ class MainWindow:
 
     def filter_articles(self):
         """根据过滤条件显示文章"""
-        print(f"🔄 filter_articles被调用")
-        print(f"   display_mode: {self.display_mode}")
-        print(f"   filtered_articles数量: {len(self.filtered_articles) if self.filtered_articles else 0}")
-        print(f"   current_articles数量: {len(self.current_articles) if self.current_articles else 0}")
-
         filter_type = self.filter_var.get()
         print(f"   filter_type: {filter_type}")
 
@@ -586,11 +567,14 @@ class MainWindow:
         print(f"   显示普通文章列表，类型: {filter_type}")
         self.display_mode = "all"
 
+        # 获取要显示的文章列表（应用时间范围筛选）
+        articles_to_display = self.get_time_filtered_articles()
+
         # 清空现有项目
         for item in self.article_tree.get_children():
             self.article_tree.delete(item)
 
-        for article in self.current_articles:
+        for article in articles_to_display:
             # 应用过滤条件
             if filter_type == "unread" and article.is_read:
                 continue
@@ -628,6 +612,18 @@ class MainWindow:
                 "",  # 普通文章没有AI摘要
                 ""   # 普通文章没有AI标签
             ))
+
+        # 更新状态栏，显示时间范围筛选效果
+        total_articles = len(self.current_articles)
+        displayed_articles = len(articles_to_display)
+        if total_articles != displayed_articles:
+            # 有时间范围筛选
+            time_range = getattr(self.rss_manager, 'time_range_var', None)
+            time_range_text = time_range.get() if time_range else "筛选"
+            self.update_status(f"显示文章: {displayed_articles}/{total_articles} 篇 ({time_range_text})")
+        else:
+            # 没有时间范围筛选
+            self.update_status(f"显示文章: {displayed_articles} 篇")
 
     def search_subscriptions(self, event=None):
         """搜索订阅源（已废弃）"""
@@ -2371,11 +2367,13 @@ AI筛选通过: {result.ai_filtered_count}
         FilterMetricsDialog(self.root)
 
     def show_all_articles(self):
-        """显示所有文章（取消筛选）"""
+        """显示所有文章（取消AI筛选，但保持时间范围筛选）"""
         print(f"🔄 show_all_articles被调用")
+
+        # 只清除AI筛选结果，不影响时间范围筛选
         self.filtered_articles = []
         self.filter_result = None
-        self.display_mode = "all"  # 设置为显示所有文章模式
+        self.display_mode = "all"
         print(f"设置显示模式为: {self.display_mode}")
 
         # 清除筛选结果缓存
@@ -2385,25 +2383,26 @@ AI筛选通过: {result.ai_filtered_count}
         self.filtered_radio.config(state=tk.DISABLED)
         self.filter_var.set("all")
 
-        self.filter_articles()  # 重新显示所有文章
+        # 重新显示文章，这里会应用时间范围筛选（如果有的话）
+        self.filter_articles()
 
-    def clear_cache(self):
-        """清除所有缓存（已废弃）"""
-        messagebox.showinfo("提示", "缓存功能已移除")
+    def get_time_filtered_articles(self):
+        """获取应用时间范围筛选后的文章列表"""
+        # 如果RSS管理器存在且有时间范围筛选设置，应用筛选
+        if hasattr(self, 'rss_manager') and self.rss_manager:
+            try:
+                # 获取RSS管理器的时间范围设置
+                time_range = self.rss_manager.time_range_var.get()
+                if time_range != "全部":
+                    # 应用时间范围筛选
+                    filtered_articles = self.rss_manager.filter_articles_by_time_range(self.current_articles)
+                    print(f"   应用时间范围筛选 ({time_range}): {len(filtered_articles)}/{len(self.current_articles)} 篇")
+                    return filtered_articles
+            except Exception as e:
+                print(f"   时间范围筛选失败: {e}")
 
-    def show_cache_status(self):
-        """显示缓存状态（已废弃）"""
-        messagebox.showinfo("提示", "缓存功能已移除")
-
-
-
-    def show_all_articles(self):
-        """显示所有文章"""
-        self.display_mode = "all"
-        self.filter_var.set("all")
-
-        self.filter_articles()  # 重新显示所有文章
-        self.update_status(f"显示所有文章: {len(self.current_articles)} 篇")
+        # 如果没有时间范围筛选或筛选失败，返回所有文章
+        return self.current_articles
 
 
 
@@ -2420,10 +2419,9 @@ AI筛选通过: {result.ai_filtered_count}
         # RSS订阅源选择处理
         if rss_feed:
             self.selected_subscription = rss_feed
-            print(f"🔄 RSS订阅源已选中: {rss_feed.title}")
         else:
             self.selected_subscription = None
-            print("🔄 RSS订阅源选择已清除")
+
 
     def on_rss_articles_loaded(self, rss_articles, source_name):
         """处理RSS文章加载事件"""
@@ -2458,7 +2456,11 @@ AI筛选通过: {result.ai_filtered_count}
 
         # 更新当前文章列表
         self.current_articles = converted_articles
-        self.display_mode = "all"
+
+        # 注意：不强制设置display_mode，保持时间范围筛选的优先级
+        # 只有在没有筛选结果时才设置为"all"模式
+        if not self.filtered_articles:
+            self.display_mode = "all"
 
         # 更新文章列表显示
         self.update_article_list(converted_articles)
